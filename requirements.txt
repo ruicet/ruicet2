@@ -1,4 +1,3 @@
-text
 aiogram
 cairosvg
 aiohttp
