@@ -31,7 +31,6 @@ dp = Dispatcher(storage=MemoryStorage())
 # ================== СОСТОЯНИЯ ==================
 class St(StatesGroup):
     calc = State()
-    task = State()
 
 
 # ================== КЛАВИАТУРЫ ==================
@@ -94,7 +93,14 @@ def svg_to_png(svg_str: str) -> bytes:
     )
 
 
-# ================== ОТПРАВКА КАРТОЧКИ ==================
+# ================== ФОРМАТИРОВАНИЕ ЧИСЛА ==================
+def fmt_number(x) -> str:
+    if isinstance(x, float) and abs(x - round(x)) < 1e-9:
+        return str(int(round(x)))
+    return f"{x:.6g}"
+
+
+# ================== ОТПРАВКА КАРТОЧКИ ТЕМЫ ==================
 async def send_topic(target, root_key: str, idx: int):
     t = get_topic(root_key, idx)
     section_title = ROOT_SECTIONS[root_key]["title"].replace("📐 ", "").replace("⚛️ ", "")
@@ -126,7 +132,7 @@ async def send_topic(target, root_key: str, idx: int):
     await target.answer(caption, parse_mode="HTML", reply_markup=kb)
 
 
-# ================== ХЕЛПЕР ==================
+# ================== ХЕЛПЕР РЕДАКТИРОВАНИЯ ==================
 async def edit_or_send(callback: types.CallbackQuery, text: str, kb):
     msg = callback.message
     try:
@@ -136,12 +142,6 @@ async def edit_or_send(callback: types.CallbackQuery, text: str, kb):
             await msg.edit_text(text, parse_mode="HTML", reply_markup=kb)
     except Exception:
         await msg.answer(text, parse_mode="HTML", reply_markup=kb)
-
-
-def fmt_number(x) -> str:
-    if isinstance(x, float) and abs(x - round(x)) < 1e-9:
-        return str(int(round(x)))
-    return f"{x:.6g}"
 
 
 # ================== КОМАНДЫ ==================
@@ -168,9 +168,10 @@ async def cmd_help(m: types.Message):
         "• <b>РЕШИТЬ ЗАДАЧУ</b> — опишите задачу словами,\n"
         "  бот подберёт формулу и решит.\n\n"
         "<b>Примеры задач:</b>\n"
-        "<i>Машина едет 60 км/ч 2 часа. Какой путь?</i>\n"
-        "<i>Тело массой 4 кг движется с ускорением 3. Найди силу.</i>\n"
-        "<i>Прямоугольный треугольник с катетами 3 и 4. Найди гипотенузу.</i>\n\n"
+        "<i>Машина едет 340 км/ч пол часа. Какой путь?</i>\n"
+        "<i>Тело массой 5 кг. Найди силу тяжести.</i>\n"
+        "<i>Прямоугольный треугольник с катетами 3 и 4. Найди гипотенузу.</i>\n"
+        "<i>Круг радиусом 3. Найди площадь.</i>\n\n"
         "Также можно просто отправить слово для поиска:\n"
         "<i>пифагор</i>, <i>скорость</i>, <i>ом</i>\n\n"
         "/start — меню\n"
@@ -215,8 +216,11 @@ async def cb_root(cb: types.CallbackQuery):
         await cb.answer("Ошибка", show_alert=True)
         return
     title = ROOT_SECTIONS[root_key]["title"]
-    await edit_or_send(cb, f"<b>{title}</b>\n─────────────────────\nПодраздел:",
-                       kb_subs(root_key))
+    await edit_or_send(
+        cb,
+        f"<b>{title}</b>\n─────────────────────\nПодраздел:",
+        kb_subs(root_key),
+    )
     await cb.answer()
 
 
@@ -227,8 +231,11 @@ async def cb_section(cb: types.CallbackQuery):
         await cb.answer("Ошибка", show_alert=True)
         return
     _, root_key, section = parts
-    await edit_or_send(cb, f"<b>{section.upper()}</b>\n─────────────────────\nТема:",
-                       kb_section(root_key, section))
+    await edit_or_send(
+        cb,
+        f"<b>{section.upper()}</b>\n─────────────────────\nТема:",
+        kb_section(root_key, section),
+    )
     await cb.answer()
 
 
@@ -249,31 +256,29 @@ async def cb_topic(cb: types.CallbackQuery, state: FSMContext):
     await send_topic(cb.message, root_key, idx)
 
 
-# ================== РЕШИТЬ ПО ФОРМУЛЕ ==================
+# ================== РЕШИТЬ ПО ФОРМУЛЕ / РЕШИТЬ ЗАДАЧУ ==================
 @dp.callback_query(F.data.startswith("solve:"))
 async def cb_solve(cb: types.CallbackQuery):
     parts = cb.data.split(":", 2)
 
-    # РЕШИТЬ ЗАДАЧУ (по описанию)
+    # --- Кнопка "РЕШИТЬ ЗАДАЧУ" из главного меню ---
     if len(parts) == 2 and parts[1] == "start":
         await cb.message.answer(
             "<b>РЕШЕНИЕ ЗАДАЧИ</b>\n"
             "─────────────────────\n"
             "Опишите задачу одним сообщением.\n\n"
             "<b>Примеры:</b>\n"
-            "<i>Машина едет 60 км/ч 2 часа. Какой путь?</i>\n"
+            "<i>Машина едет 340 км/ч пол часа. Какой путь?</i>\n"
             "<i>Тело массой 5 кг. Найди силу тяжести.</i>\n"
-            "<i>Круг радиусом 3. Найди площадь.</i>\n\n"
-            "Для отмены: /cancel",
+            "<i>Прямоугольный треугольник с катетами 3 и 4. Найди гипотенузу.</i>\n"
+            "<i>Круг радиусом 3. Найди площадь.</i>\n"
+            "<i>Нагрели 2 кг воды на 50 градусов. Найди теплоту.</i>",
             parse_mode="HTML",
         )
-        # Устанавливаем состояние ожидания
-        await dp.fsm.get_context(bot=bot, chat_id=cb.message.chat.id,
-                                 user_id=cb.from_user.id).set_state(St.task)
         await cb.answer()
         return
 
-    # РЕШИТЬ ПО ФОРМУЛЕ (калькулятор)
+    # --- Калькулятор для конкретной темы ---
     if len(parts) != 3:
         await cb.answer("Ошибка", show_alert=True)
         return
@@ -339,8 +344,10 @@ async def calc_input(m: types.Message, state: FSMContext):
         return
 
     data = await state.get_data()
-    needed = data["needed"]; labels = data["labels"]
-    values = data["values"]; current = data["current"]
+    needed = data["needed"]
+    labels = data["labels"]
+    values = data["values"]
+    current = data["current"]
 
     values[needed[current]] = value
     current += 1
@@ -354,17 +361,22 @@ async def calc_input(m: types.Message, state: FSMContext):
         )
         return
 
-    root_key = data["root_key"]; idx = data["topic_idx"]; target = data["target"]
-    t = get_topic(root_key, idx); calc = t["calc"]
+    root_key = data["root_key"]
+    idx = data["topic_idx"]
+    target = data["target"]
+    t = get_topic(root_key, idx)
+    calc = t["calc"]
 
     try:
         result = calc["solvers"][target](**values)
     except ZeroDivisionError:
         await m.answer("Деление на ноль.", reply_markup=kb_topic(root_key, idx))
-        await state.clear(); return
+        await state.clear()
+        return
     except Exception as e:
         await m.answer(f"Ошибка: {e}", reply_markup=kb_topic(root_key, idx))
-        await state.clear(); return
+        await state.clear()
+        return
 
     given = "\n".join(f"  {k} = {fmt_number(v)}" for k, v in values.items())
     await m.answer(
@@ -378,69 +390,84 @@ async def calc_input(m: types.Message, state: FSMContext):
     await state.clear()
 
 
-# ================== РЕШЕНИЕ ЗАДАЧИ ПО ОПИСАНИЮ ==================
-@dp.message(St.task, F.text)
-async def task_input(m: types.Message, state: FSMContext):
-    text = m.text.strip()
-    await state.clear()
-
-    if len(text) < 5:
-        await m.answer("Слишком коротко. Опишите задачу подробнее.")
-        return
-
-    result = solve_problem(text)
-
-    if not result:
-        await m.answer(
-            "<b>НЕ УДАЛОСЬ РАСПОЗНАТЬ ЗАДАЧУ</b>\n"
-            "─────────────────────\n"
-            "Попробуйте:\n"
-            "• Указать единицы измерения (км/ч, кг, °C)\n"
-            "• Явно написать, что найти: <i>найди силу</i>\n\n"
-            "Или найдите тему вручную через ГЕОМЕТРИЯ / ФИЗИКА\n"
-            "и решите задачу по формуле.",
-            parse_mode="HTML", reply_markup=kb_main(),
-        )
-        return
-
-    t = result["topic"]
-    values = result["values"]
-    target = result["target"]
-    answer = result["result"]
-    root_key = result["root_key"]
-    idx = result["idx"]
-
-    root_title = ROOT_SECTIONS[root_key]["title"]
-    given = "\n".join(f"  {k} = {fmt_number(v)}" for k, v in values.items())
-
-    await m.answer(
-        f"<b>РЕШЕНИЕ</b>\n"
-        "─────────────────────\n"
-        f"<i>{t['section']} · {root_title}</i>\n\n"
-        f"<b>Формула</b>\n<code>{t['formula']}</code>\n\n"
-        f"<b>Дано</b>\n{given}\n\n"
-        f"<b>Ответ</b>\n{target} = {fmt_number(answer)}",
-        parse_mode="HTML",
-        reply_markup=kb_topic(root_key, idx),
-    )
-
-
-# ================== ПОИСК ==================
+# ================== ПОИСК + РЕШЕНИЕ ЗАДАЧ ПО ОПИСАНИЮ ==================
 @dp.message(F.text & ~F.text.startswith("/"))
 async def search_handler(m: types.Message, state: FSMContext):
-    if await state.get_state() is not None:
+    # Если идёт ввод чисел в калькуляторе — не мешаем
+    if await state.get_state() == St.calc:
         return
 
-    q = m.text.strip()
-    if len(q) < 2:
+    text = m.text.strip()
+
+    # 1. Сначала пробуем решить как задачу
+    if len(text) >= 6 and any(c.isdigit() for c in text):
+        result = solve_problem(text)
+        if result:
+            t = result["topic"]
+            values = result["values"]
+            target = result["target"]
+            answer = result["result"]
+            root_key = result["root_key"]
+            idx = result["idx"]
+            has_kmh = result.get("has_kmh", False)
+
+            root_title = ROOT_SECTIONS[root_key]["title"].replace("📐 ", "").replace("⚛️ ", "")
+
+            given = "\n".join(f"  {k} = {fmt_number(v)}" for k, v in values.items())
+
+            # Подбираем единицы измерения для ответа
+            unit_suffix = ""
+            if target == "s":
+                unit_suffix = " км" if has_kmh else " м"
+            elif target == "v":
+                unit_suffix = " км/ч" if has_kmh else " м/с"
+            elif target == "t":
+                unit_suffix = " ч" if has_kmh else " с"
+            elif target in ("F", "F1", "F2", "MT"):
+                unit_suffix = " Н"
+            elif target in ("A", "Q", "Ek", "Ep"):
+                unit_suffix = " Дж"
+            elif target in ("N", "P"):
+                unit_suffix = " Вт"
+            elif target == "p":
+                unit_suffix = " Па"
+            elif target == "V":
+                unit_suffix = " м³"
+            elif target == "I":
+                unit_suffix = " А"
+            elif target == "U":
+                unit_suffix = " В"
+            elif target == "R":
+                unit_suffix = " Ом"
+
+            await m.answer(
+                f"<b>РЕШЕНИЕ</b>\n"
+                "─────────────────────\n"
+                f"<i>{t['section']} · {root_title}</i>\n\n"
+                f"<b>Формула</b>\n<code>{t['formula']}</code>\n\n"
+                f"<b>Дано</b>\n{given}\n\n"
+                f"<b>Ответ</b>\n{target} = {fmt_number(answer)}{unit_suffix}",
+                parse_mode="HTML",
+                reply_markup=kb_topic(root_key, idx),
+            )
+            return
+
+    # 2. Если не задача — обычный поиск
+    if len(text) < 2:
         await m.answer("Введите хотя бы 2 символа.")
         return
 
-    results = search_all(q)
+    results = search_all(text)
     if not results:
         await m.answer(
-            "Ничего не найдено.\n"
-            "Попробуйте другое слово или откройте /start.",
+            "<b>НЕ УДАЛОСЬ РАСПОЗНАТЬ</b>\n"
+            "─────────────────────\n"
+            "Попробуйте описать задачу подробнее:\n"
+            "• Укажите единицы: <i>км/ч, кг, минуты, градусов</i>\n"
+            "• Явно напишите, что найти: <i>найди путь</i>\n\n"
+            "Или откройте раздел ГЕОМЕТРИЯ / ФИЗИКА\n"
+            "и найдите тему вручную.",
+            parse_mode="HTML", reply_markup=kb_main(),
         )
         return
 
@@ -457,7 +484,7 @@ async def search_handler(m: types.Message, state: FSMContext):
     )
 
 
-# ================== HEALTH ==================
+# ================== HEALTH-СЕРВЕР ДЛЯ RENDER ==================
 async def health(request):
     return web.Response(text="ok")
 
@@ -474,8 +501,10 @@ async def start_web():
 
 # ================== ЗАПУСК ==================
 async def main():
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s | %(levelname)s | %(message)s")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+    )
     await start_web()
     await bot.delete_webhook(drop_pending_updates=True)
     logging.info("Bot started")
