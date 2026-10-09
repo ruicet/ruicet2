@@ -7,15 +7,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Сначала зависимости — так Docker кэширует их и пересобирает быстрее
+# Сначала зависимости — так Docker кэширует их
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Потом остальной код
+# Затем весь код (bot.py, data.py и т.д.)
 COPY . .
 
-# Порт для health-сервера (Render ждёт именно 10000)
+# Render ожидает порт 10000
 EXPOSE 10000
 
-# Запуск бота
 CMD ["python", "bot.py"]
