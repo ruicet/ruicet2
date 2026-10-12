@@ -3,10 +3,11 @@ import re
 from data import ROOT_SECTIONS
 
 
-# ================== ПРЕДОБРАБОТКА ==================
+# ================== ПРЕДОБРАБОТКА ТЕКСТА ==================
 def preprocess(text: str) -> str:
     t = text.lower()
 
+    # Слова-числа
     compound = [
         (r'\bпол\s*[-]?\s*часа?\b', ' 0.5 ч '),
         (r'\bпол\s*[-]?\s*минуты?\b', ' 0.5 мин '),
@@ -23,6 +24,7 @@ def preprocess(text: str) -> str:
     for pat, repl in compound:
         t = re.sub(pat, repl, t)
 
+    # Скорости
     speeds = [
         (r'километров\s+в\s+час[ау]?', 'км/ч'),
         (r'километр\s+в\s+час', 'км/ч'),
@@ -42,6 +44,7 @@ def preprocess(text: str) -> str:
     for pat, repl in speeds:
         t = re.sub(pat, repl, t)
 
+    # Остальные единицы
     units = [
         (r'\bминут[аыуеой]*\b', 'мин'),
         (r'\bсекунд[аыуеой]*\b', 'сек'),
@@ -116,15 +119,14 @@ def extract_values(text: str):
     return out
 
 
-# ================== МЕТА ВСЕХ ТЕМ ==================
+# ================== МЕТАДАННЫЕ ТЕМ ==================
 TOPIC_META = {
-    # ---- ФИЗИКА 7 ----
+    # ========== ФИЗИКА 7 КЛАСС ==========
     ("phys", "Скорость (равномерное движение)"): {
         "keywords": ["скорость", "едет", "ехал", "движется", "летит", "плыв",
                      "проехал", "прошёл", "прошел", "прошла",
                      "какой путь", "какое расстояние", "сколько проедет",
-                     "сколько пройдет", "сколько прошёл", "сколько прошел",
-                     "сколько проедет", "сколько она проедет", "сколько он проедет"],
+                     "сколько пройдет", "сколько прошёл", "сколько прошел"],
         "units": {"v": ["speed_kmh", "speed_ms"],
                   "S": ["distance_km", "distance_m", "distance_cm", "distance_mm"],
                   "t": ["time_h", "time_min", "time_s"]},
@@ -136,13 +138,15 @@ TOPIC_META = {
     },
     ("phys", "Путь при равномерном движении"): {
         "keywords": ["путь", "расстояние"],
-        "units": {"v": ["speed_kmh", "speed_ms"], "S": ["distance_km", "distance_m"],
+        "units": {"v": ["speed_kmh", "speed_ms"],
+                  "S": ["distance_km", "distance_m"],
                   "t": ["time_h", "time_min", "time_s"]},
     },
     ("phys", "Плотность вещества"): {
         "keywords": ["плотность", "вещество"],
         "units": {"m": ["mass_kg", "mass_g", "mass_t"],
-                  "V": ["volume_m3", "volume_l", "volume_cm3"], "ρ": ["density"]},
+                  "V": ["volume_m3", "volume_l", "volume_cm3"],
+                  "ρ": ["density"]},
     },
     ("phys", "Сила тяжести"): {
         "keywords": ["сила тяжести", "вес тела", "сила притяжения"],
@@ -150,19 +154,22 @@ TOPIC_META = {
         "question_hints": {"F": ["сила", "вес"]},
     },
     ("phys", "Закон Гука"): {
-        "keywords": ["пружина", "жёсткость", "жесткость", "удлинение", "растянул", "сжал"],
-        "units": {"k": ["stiffness"], "x": ["distance_m", "distance_cm"], "F": ["force"]},
+        "keywords": ["пружина", "пружину", "жёсткость", "жесткость", "удлинение",
+                     "растянул", "сжал", "растянулась"],
+        "units": {"k": ["stiffness"],
+                  "x": ["distance_m", "distance_cm", "distance_mm"],
+                  "F": ["force"]},
     },
     ("phys", "Давление твёрдого тела"): {
         "keywords": ["давление", "давит", "опора"],
         "units": {"F": ["force"], "S": ["area_m2", "area_cm2"], "p": ["pressure"]},
     },
     ("phys", "Давление жидкости"): {
-        "keywords": ["глубина", "жидкость", "вода", "керосин", "нефть", "ртуть"],
+        "keywords": ["глубина", "жидкость", "вода", "керосин", "нефть", "ртуть", "на глубине"],
         "units": {"ρ": ["density"], "h": ["distance_m"], "p": ["pressure"]},
     },
     ("phys", "Сила Архимеда"): {
-        "keywords": ["архимед", "выталкивающая", "плавает", "погружён", "погружен"],
+        "keywords": ["архимед", "выталкивающая", "плавает", "погружён", "погружен", "погрузили"],
         "units": {"ρ": ["density"], "V": ["volume_m3", "volume_l"], "F": ["force"]},
     },
     ("phys", "Механическая работа"): {
@@ -182,16 +189,17 @@ TOPIC_META = {
         "units": {"m": ["mass_kg"], "v": ["speed_ms", "speed_kmh"], "Ek": ["energy"]},
     },
     ("phys", "Потенциальная энергия"): {
-        "keywords": ["потенциальная", "подняли", "на высоте"],
+        "keywords": ["потенциальная", "подняли", "на высоте", "высота"],
         "units": {"m": ["mass_kg"], "h": ["distance_m"], "Ep": ["energy"]},
     },
     ("phys", "Момент силы (правило рычага)"): {
         "keywords": ["рычаг", "момент силы", "плечо", "равновесие"],
         "units": {"F1": ["force"], "F2": ["force"],
-                  "l1": ["distance_m", "distance_cm"], "l2": ["distance_m", "distance_cm"]},
+                  "l1": ["distance_m", "distance_cm"],
+                  "l2": ["distance_m", "distance_cm"]},
     },
 
-    # ---- ФИЗИКА 8 ----
+    # ========== ФИЗИКА 8 КЛАСС ==========
     ("phys", "Количество теплоты при нагревании"): {
         "keywords": ["нагрели", "нагревание", "нагреть", "теплоёмкость", "теплоемкость",
                      "температура", "градусов", "градуса"],
@@ -216,7 +224,8 @@ TOPIC_META = {
     },
     ("phys", "Сопротивление проводника"): {
         "keywords": ["сопротивление проводника", "удельное сопротивление"],
-        "units": {"rho": ["rho"], "l": ["distance_m"], "S": ["area_m2", "area_cm2"], "R": ["resistance"]},
+        "units": {"rho": ["rho"], "l": ["distance_m"],
+                  "S": ["area_m2", "area_cm2"], "R": ["resistance"]},
     },
     ("phys", "Последовательное соединение"): {
         "keywords": ["последовательное", "последовательно"],
@@ -231,7 +240,7 @@ TOPIC_META = {
         "units": {"U": ["voltage"], "I": ["current"], "P": ["power"]},
     },
     ("phys", "Работа электрического тока"): {
-        "keywords": ["работа тока"],
+        "keywords": ["работа тока", "работа электрического"],
         "units": {"U": ["voltage"], "I": ["current"], "t": ["time_h", "time_s"], "A": ["energy"]},
     },
     ("phys", "Закон Джоуля-Ленца"): {
@@ -239,10 +248,10 @@ TOPIC_META = {
         "units": {"I": ["current"], "R": ["resistance"], "t": ["time_s", "time_h"], "Q": ["energy"]},
     },
 
-    # ---- ФИЗИКА 9 · КИНЕМАТИКА ----
+    # ========== ФИЗИКА 9 КЛАСС · КИНЕМАТИКА ==========
     ("phys", "Ускорение"): {
         "keywords": ["ускорение", "ускорением", "затормозил", "разогнался",
-                     "изменил скорость", "тормозит", "разгоняется", "до скорости"],
+                     "изменил скорость", "тормозит", "разгоняется"],
         "units": {"v0": ["speed_ms", "speed_kmh"], "v": ["speed_ms", "speed_kmh"],
                   "t": ["time_s", "time_h"], "a": ["accel"]},
         "question_hints": {"a": ["ускорение", "ускорением"]},
@@ -259,7 +268,7 @@ TOPIC_META = {
                      "какое перемещение", "s = v0t + at2/2"],
         "units": {"v0": ["speed_ms", "speed_kmh"], "a": ["accel"],
                   "t": ["time_s", "time_h"], "S": ["distance_m", "distance_km"]},
-        "question_hints": {"S": ["перемещение", "путь", "расстояние", "какое перемещение"]},
+        "question_hints": {"S": ["перемещение", "путь", "расстояние"]},
     },
     ("phys", "Уравнение координаты (равномерное)"): {
         "keywords": ["координата", "уравнение координаты", "положение тела"],
@@ -272,19 +281,21 @@ TOPIC_META = {
     },
     ("phys", "Средняя скорость"): {
         "keywords": ["средняя скорость", "vср"],
-        "units": {"S": ["distance_km", "distance_m"], "t": ["time_h", "time_s"],
+        "units": {"S": ["distance_km", "distance_m"],
+                  "t": ["time_h", "time_s"],
                   "v": ["speed_kmh", "speed_ms"]},
     },
     ("phys", "Свободное падение"): {
-        "keywords": ["свободное падение", "упало", "падает с высоты", "упал", "сбросили"],
+        "keywords": ["свободное падение", "упало", "падает с высоты", "упал", "падает", "сбросили"],
         "units": {"t": ["time_s"], "h": ["distance_m"]},
     },
 
-    # ---- ФИЗИКА 9 · ДИНАМИКА ----
+    # ========== ФИЗИКА 9 КЛАСС · ДИНАМИКА ==========
     ("phys", "Второй закон Ньютона"): {
         "keywords": ["второй закон ньютона", "ньютон", "сила действует",
                      "ускорением", "под действием силы"],
         "units": {"m": ["mass_kg"], "a": ["accel"], "F": ["force"]},
+        "question_hints": {"F": ["сила", "силу"], "m": ["масса", "массу"], "a": ["ускорение"]},
     },
     ("phys", "Третий закон Ньютона"): {
         "keywords": ["третий закон ньютона", "взаимодействие", "противодействие"],
@@ -295,7 +306,7 @@ TOPIC_META = {
         "units": {"m": ["mass_kg"], "v": ["speed_ms", "speed_kmh"], "p": ["impulse"]},
     },
     ("phys", "Закон сохранения импульса"): {
-        "keywords": ["сохранение импульса", "сцепились", "ударились"],
+        "keywords": ["сохранение импульса", "закон сохранения", "сцепились", "ударились"],
         "units": {"m1": ["mass_kg"], "v1": ["speed_ms"], "m2": ["mass_kg"],
                   "v2": ["speed_ms"], "v": ["speed_ms"]},
     },
@@ -312,10 +323,11 @@ TOPIC_META = {
         "units": {"g": ["accel"], "R": ["distance_m"], "v": ["speed_ms"]},
     },
 
-    # ---- ФИЗИКА 9 · ОКРУЖНОСТЬ ----
+    # ========== ФИЗИКА 9 КЛАСС · ОКРУЖНОСТЬ ==========
     ("phys", "Центростремительное ускорение"): {
         "keywords": ["центростремительное", "по окружности", "на окружности"],
-        "units": {"v": ["speed_ms", "speed_kmh"], "R": ["distance_m", "distance_cm"], "a": ["accel"]},
+        "units": {"v": ["speed_ms", "speed_kmh"],
+                  "R": ["distance_m", "distance_cm"], "a": ["accel"]},
     },
     ("phys", "Период и частота вращения"): {
         "keywords": ["период", "частота", "оборот", "обороты"],
@@ -326,7 +338,7 @@ TOPIC_META = {
         "units": {"w": ["angular_speed"], "R": ["distance_m"], "v": ["speed_ms"]},
     },
 
-    # ---- ФИЗИКА 9 · КОЛЕБАНИЯ ----
+    # ========== ФИЗИКА 9 КЛАСС · КОЛЕБАНИЯ ==========
     ("phys", "Период математического маятника"): {
         "keywords": ["математический маятник", "маятник", "период маятника"],
         "units": {"l": ["distance_m", "distance_cm"], "T": ["time_s"]},
@@ -337,56 +349,65 @@ TOPIC_META = {
     },
     ("phys", "Длина волны"): {
         "keywords": ["длина волны", "волна", "лямбда"],
-        "units": {"v": ["speed_ms", "speed_kmh"], "T": ["time_s"], "lam": ["distance_m"]},
+        "units": {"v": ["speed_ms", "speed_kmh"],
+                  "T": ["time_s"], "lam": ["distance_m"]},
+        "question_hints": {"lam": ["длина", "длину"]},
     },
     ("phys", "Скорость волны"): {
         "keywords": ["скорость волны", "распространение волны"],
         "units": {"lam": ["distance_m"], "nu": ["frequency"], "v": ["speed_ms"]},
     },
 
-    # ---- ФИЗИКА 9 · МАГНЕТИЗМ ----
+    # ========== ФИЗИКА 9 КЛАСС · МАГНЕТИЗМ ==========
     ("phys", "Магнитный поток"): {
         "keywords": ["магнитный поток", "вебер", "поток индукции"],
         "units": {"B": ["tesla"], "S": ["area_m2"], "Phi": ["weber"]},
+        "question_hints": {"Phi": ["поток"]},
     },
     ("phys", "Закон электромагнитной индукции"): {
-        "keywords": ["эдс индукции", "электромагнитная индукция"],
+        "keywords": ["эдс индукции", "электромагнитная индукция", "индукция"],
         "units": {"dPhi": ["weber"], "dt": ["time_s"], "e": ["voltage"]},
     },
 
-    # ---- ФИЗИКА 9 · ОПТИКА ----
+    # ========== ФИЗИКА 9 КЛАСС · ОПТИКА ==========
     ("phys", "Оптическая сила линзы"): {
-        "keywords": ["оптическая сила", "линза", "диоптрия"],
+        "keywords": ["оптическая сила", "линза", "диоптрия", "диоптрии"],
         "units": {"F": ["distance_m", "distance_cm"], "D": ["diopter"]},
+        "question_hints": {"D": ["оптическая сила"]},
     },
     ("phys", "Формула тонкой линзы"): {
         "keywords": ["тонкая линза", "формула линзы", "изображение линзы"],
-        "units": {"d": ["distance_cm", "distance_m"], "f": ["distance_cm", "distance_m"],
+        "units": {"d": ["distance_cm", "distance_m"],
+                  "f": ["distance_cm", "distance_m"],
                   "F": ["distance_cm", "distance_m"]},
     },
     ("phys", "Закон преломления света"): {
-        "keywords": ["преломление", "показатель преломления"],
-        "units": {},
+        "keywords": ["преломление", "показатель преломления", "преломления"],
+        "units": {"alpha": ["temp"], "n": ["mu"], "beta": ["temp"]},
     },
 
-    # ---- ГЕОМЕТРИЯ ----
+    # ========== ГЕОМЕТРИЯ ==========
     ("geom", "Площадь треугольника"): {
         "keywords": ["площадь треугольника", "треугольник", "основание"],
-        "field_hints": {"a": ["основание", "основанию"], "h": ["высота", "высот"]},
+        "field_hints": {"a": ["основание", "основанию", "основанием"],
+                        "h": ["высота", "высот", "высоте"]},
         "question_hints": {"S": ["площадь", "площади"]},
     },
     ("geom", "Формула Герона"): {
-        "keywords": ["герон", "три стороны"],
+        "keywords": ["герон", "три стороны", "по трём сторонам"],
         "question_hints": {"S": ["площадь"]},
     },
     ("geom", "Теорема косинусов"): {
-        "keywords": ["косинусов", "теорема косинусов"],
-        "units": {"a": ["distance_m", "distance_cm"], "b": ["distance_m", "distance_cm"],
+        "keywords": ["теорема косинусов", "косинусов"],
+        "units": {"a": ["distance_m", "distance_cm"],
+                  "b": ["distance_m", "distance_cm"],
                   "C": ["temp"], "c": ["distance_m", "distance_cm"]},
+        "question_hints": {"c": ["сторону", "сторона"], "C": ["угол"]},
     },
     ("geom", "Теорема синусов"): {
-        "keywords": ["синусов", "теорема синусов"],
-        "units": {"a": ["distance_m", "distance_cm"], "A": ["temp"], "R": ["distance_m"]},
+        "keywords": ["теорема синусов", "синусов"],
+        "units": {"a": ["distance_m", "distance_cm"],
+                  "A": ["temp"], "R": ["distance_m", "distance_cm"]},
     },
     ("geom", "Теорема Пифагора"): {
         "keywords": ["пифагор", "прямоугольный треугольник", "катет", "гипотенуз"],
@@ -394,31 +415,35 @@ TOPIC_META = {
         "question_hints": {"c": ["гипотенуз"], "a": ["катет"], "b": ["катет"]},
     },
     ("geom", "Сумма углов треугольника"): {
-        "keywords": ["сумма углов треугольника"],
+        "keywords": ["сумма углов треугольника", "углы треугольника"],
         "units": {"A": ["temp"], "B": ["temp"], "C": ["temp"]},
     },
     ("geom", "Площадь параллелограмма"): {
-        "keywords": ["параллелограмм"], "question_hints": {"S": ["площадь"]},
+        "keywords": ["параллелограмм"],
+        "question_hints": {"S": ["площадь"]},
     },
     ("geom", "Площадь трапеции"): {
-        "keywords": ["трапеция"], "question_hints": {"S": ["площадь"]},
+        "keywords": ["трапеция", "трапеции"],
+        "question_hints": {"S": ["площадь"]},
     },
     ("geom", "Площадь ромба"): {
-        "keywords": ["ромб"], "question_hints": {"S": ["площадь"]},
+        "keywords": ["ромб", "ромба"],
+        "question_hints": {"S": ["площадь"]},
     },
     ("geom", "Сумма углов n-угольника"): {
-        "keywords": ["сумма углов", "n-угольник"],
+        "keywords": ["сумма углов", "n-угольник", "многоугольник"],
     },
     ("geom", "Длина окружности"): {
         "keywords": ["длина окружности", "длина круга"],
         "question_hints": {"C": ["длина", "длину"]},
     },
     ("geom", "Площадь круга"): {
-        "keywords": ["круг", "окружность", "площадь круга"],
+        "keywords": ["круг", "окружность", "радиус", "площадь круга"],
         "question_hints": {"S": ["площадь"], "R": ["радиус"]},
     },
     ("geom", "Площадь сектора"): {
-        "keywords": ["сектор", "площадь сектора"], "question_hints": {"S": ["площадь"]},
+        "keywords": ["сектор", "площадь сектора"],
+        "question_hints": {"S": ["площадь"]},
     },
     ("geom", "Теорема о вписанном угле"): {
         "keywords": ["вписанный угол", "центральный угол"],
@@ -427,16 +452,32 @@ TOPIC_META = {
         "keywords": ["касательная", "секущая"],
     },
     ("geom", "Основное тождество"): {
-        "keywords": ["основное тождество", "синус косинус"],
+        "keywords": ["основное тождество", "синус косинус", "sin cos"],
     },
     ("geom", "Площадь через синус"): {
-        "keywords": ["площадь через синус"], "question_hints": {"S": ["площадь"]},
+        "keywords": ["площадь через синус", "площадь через угол"],
+        "question_hints": {"S": ["площадь"]},
     },
-    ("geom", "Объём призмы"): {"keywords": ["призма"], "question_hints": {"V": ["объём", "объем"]}},
-    ("geom", "Объём пирамиды"): {"keywords": ["пирамида"], "question_hints": {"V": ["объём", "объем"]}},
-    ("geom", "Объём цилиндра"): {"keywords": ["цилиндр"], "question_hints": {"V": ["объём", "объем"]}},
-    ("geom", "Объём конуса"): {"keywords": ["конус"], "question_hints": {"V": ["объём", "объем"]}},
-    ("geom", "Объём шара"): {"keywords": ["шар", "сфера"], "question_hints": {"V": ["объём", "объем"]}},
+    ("geom", "Объём призмы"): {
+        "keywords": ["призма", "призмы"],
+        "question_hints": {"V": ["объём", "объем"]},
+    },
+    ("geom", "Объём пирамиды"): {
+        "keywords": ["пирамида", "пирамиды"],
+        "question_hints": {"V": ["объём", "объем"]},
+    },
+    ("geom", "Объём цилиндра"): {
+        "keywords": ["цилиндр", "цилиндра"],
+        "question_hints": {"V": ["объём", "объем"]},
+    },
+    ("geom", "Объём конуса"): {
+        "keywords": ["конус", "конуса"],
+        "question_hints": {"V": ["объём", "объем"]},
+    },
+    ("geom", "Объём шара"): {
+        "keywords": ["шар", "шара", "сфера"],
+        "question_hints": {"V": ["объём", "объем"], "R": ["радиус"]},
+    },
     ("geom", "Объём усечённой пирамиды"): {
         "keywords": ["усечённая пирамида", "усеченная пирамида"],
         "question_hints": {"V": ["объём", "объем"]},
@@ -444,15 +485,17 @@ TOPIC_META = {
 }
 
 
-# ================== ЛОГИКА ==================
+# ================== ОЦЕНКА И СОПОСТАВЛЕНИЕ ==================
 def _score(meta, text):
     return sum(len(kw) for kw in meta.get("keywords", []) if kw in text)
 
 
 def _assign(meta, topic, values, text):
+    """Сопоставляет числа с переменными формулы."""
     calc = topic.get("calc")
     if not calc:
         return None
+
     var_names = [v[0] for v in calc["vars"]]
     units_map = meta.get("units", {})
     hints_map = meta.get("field_hints", {})
@@ -460,7 +503,7 @@ def _assign(meta, topic, values, text):
     assignment = {}
     used = set()
 
-    # 1. По единицам
+    # 1. По единицам измерения
     for i, val in enumerate(values):
         if i in used or not val["unit"]:
             continue
@@ -488,5 +531,138 @@ def _assign(meta, topic, values, text):
                 except ValueError:
                     pass
 
-    # 3. По позиции
-    unused = [(i
+    # 3. По позиции — если не хватает одной переменной, она цель
+    unused = [(i, values[i]) for i in range(len(values)) if i not in used]
+    remaining = [v for v in var_names if v not in assignment]
+
+    if 0 < len(unused) == len(remaining) - 1:
+        for idx_pos, var in enumerate(remaining[:-1]):
+            i, val = unused[idx_pos]
+            assignment[var] = (val["value"], val["unit"])
+            used.add(i)
+
+    return assignment or None
+
+
+def _target(meta, topic, text, assignment):
+    calc = topic["calc"]
+    var_names = [v[0] for v in calc["vars"]]
+    solvers = calc["solvers"]
+
+    # По подсказкам в вопросе
+    for var, hints in meta.get("question_hints", {}).items():
+        if var in solvers and var not in assignment:
+            for h in hints:
+                if h in text:
+                    return var
+
+    # Иначе — единственная незанятая решаемая переменная
+    candidates = [v for v in var_names if v not in assignment and v in solvers]
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _convert_to_solver(values_with_units, topic):
+    """Конвертация единиц перед подстановкой."""
+    calc = topic.get("calc") or {}
+    var_names = [v[0] for v in calc.get("vars", [])]
+
+    # Для ускорения — всегда СИ
+    has_accel = "a" in var_names
+    has_kmh = any(u == 'speed_kmh' for _, u in values_with_units.values())
+    use_kmh = has_kmh and not has_accel
+
+    result = {}
+    for var, (val, unit) in values_with_units.items():
+        nv = val
+
+        if unit == 'time_h':
+            nv = val if use_kmh else val * 3600
+        elif unit == 'time_min':
+            nv = val / 60 if use_kmh else val * 60
+        elif unit == 'time_s':
+            nv = val / 3600 if use_kmh else val
+
+        elif unit == 'distance_km':
+            nv = val if use_kmh else val * 1000
+        elif unit == 'distance_m':
+            nv = val if not use_kmh else val / 1000
+        elif unit == 'distance_cm':
+            nv = val / 100 if not use_kmh else val / 100000
+        elif unit == 'distance_mm':
+            nv = val / 1000 if not use_kmh else val / 1000000
+
+        elif unit == 'mass_g':
+            nv = val / 1000
+        elif unit == 'mass_t':
+            nv = val * 1000
+
+        elif unit == 'volume_l':
+            nv = val / 1000
+        elif unit == 'volume_cm3':
+            nv = val / 1000000
+
+        elif unit == 'area_cm2':
+            nv = val / 10000
+
+        elif unit == 'speed_ms':
+            nv = val * 3.6 if use_kmh else val
+        elif unit == 'speed_kmh':
+            nv = val if use_kmh else val / 3.6
+
+        result[var] = nv
+    return result
+
+
+# ================== ГЛАВНАЯ ФУНКЦИЯ ==================
+def solve_problem(text: str):
+    """Пытается решить задачу по описанию. Возвращает dict или None."""
+    if not text or len(text.strip()) < 4:
+        return None
+
+    processed = preprocess(text)
+    values = extract_values(processed)
+    if not values:
+        return None
+
+    # Ищем подходящие темы
+    candidates = []
+    for root_key, data in ROOT_SECTIONS.items():
+        for idx, topic in enumerate(data["topics"]):
+            meta = TOPIC_META.get((root_key, topic["name"]))
+            if not meta or not topic.get("calc"):
+                continue
+            score = _score(meta, processed)
+            if score > 0:
+                candidates.append((score, root_key, idx, topic, meta))
+
+    candidates.sort(key=lambda x: -x[0])
+
+    for _sc, root_key, idx, topic, meta in candidates:
+        assignment_with_units = _assign(meta, topic, values, processed)
+        if not assignment_with_units:
+            continue
+
+        assignment_wo = {k: v for k, v in assignment_with_units.items()}
+        target = _target(meta, topic, processed, assignment_wo)
+        if not target:
+            continue
+
+        assignment = _convert_to_solver(assignment_with_units, topic)
+
+        try:
+            result = topic["calc"]["solvers"][target](**assignment)
+        except Exception:
+            continue
+
+        has_kmh = any(u == 'speed_kmh' for _, u in assignment_with_units.values())
+
+        return {
+            "root_key": root_key,
+            "idx": idx,
+            "topic": topic,
+            "values": assignment,
+            "target": target,
+            "result": result,
+            "has_kmh": has_kmh,
+        }
+    return None
