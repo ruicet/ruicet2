@@ -8,7 +8,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BufferedInputFile
+from aiogram.types import BufferedInputFile, InputMediaPhoto
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import cairosvg
@@ -36,10 +36,10 @@ class St(StatesGroup):
 # ================== КЛАВИАТУРЫ ==================
 def kb_main():
     kb = InlineKeyboardBuilder()
-    kb.button(text="ГЕОМЕТРИЯ", callback_data="root:geom")
-    kb.button(text="ФИЗИКА", callback_data="root:phys")
-    kb.button(text="РЕШИТЬ ЗАДАЧУ", callback_data="solve:start")
-    kb.button(text="СПРАВКА", callback_data="help")
+    kb.button(text="📐 ГЕОМЕТРИЯ", callback_data="root:geom")
+    kb.button(text="⚛️ ФИЗИКА", callback_data="root:phys")
+    kb.button(text="🧠 РЕШИТЬ ЗАДАЧУ", callback_data="solve:start")
+    kb.button(text="ℹ️ СПРАВКА", callback_data="help")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -48,7 +48,7 @@ def kb_subs(root_key: str):
     kb = InlineKeyboardBuilder()
     for section in get_subsections(root_key):
         kb.button(text=section.upper(), callback_data=f"sec:{root_key}:{section}")
-    kb.button(text="НАЗАД", callback_data="back:main")
+    kb.button(text="⬅️ НАЗАД", callback_data="back:main")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -57,7 +57,7 @@ def kb_section(root_key: str, section: str):
     kb = InlineKeyboardBuilder()
     for idx, name in get_subsections(root_key).get(section, []):
         kb.button(text=name, callback_data=f"topic:{root_key}:{idx}")
-    kb.button(text="НАЗАД", callback_data=f"root:{root_key}")
+    kb.button(text="⬅️ НАЗАД", callback_data=f"root:{root_key}")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -66,8 +66,8 @@ def kb_topic(root_key: str, idx: int):
     t = get_topic(root_key, idx)
     kb = InlineKeyboardBuilder()
     if t.get("calc"):
-        kb.button(text="РЕШИТЬ ПО ФОРМУЛЕ", callback_data=f"solve:{root_key}:{idx}")
-    kb.button(text="НАЗАД", callback_data=f"sec:{root_key}:{t['section']}")
+        kb.button(text="🧮 РЕШИТЬ ПО ФОРМУЛЕ", callback_data=f"solve:{root_key}:{idx}")
+    kb.button(text="⬅️ НАЗАД", callback_data=f"sec:{root_key}:{t['section']}")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -78,7 +78,7 @@ def kb_targets(root_key: str, idx: int):
     for name, _ in calc["vars"]:
         if name in calc["solvers"]:
             kb.button(text=f"Найти {name}", callback_data=f"pick:{root_key}:{idx}:{name}")
-    kb.button(text="НАЗАД", callback_data=f"topic:{root_key}:{idx}")
+    kb.button(text="⬅️ НАЗАД", callback_data=f"topic:{root_key}:{idx}")
     kb.adjust(2)
     return kb.as_markup()
 
@@ -93,15 +93,76 @@ def svg_to_png(svg_str: str) -> bytes:
     )
 
 
-# ================== ФОРМАТИРОВАНИЕ ЧИСЛА ==================
+# ================== ФОРМАТИРОВАНИЕ ==================
 def fmt_number(x) -> str:
     if isinstance(x, float) and abs(x - round(x)) < 1e-9:
         return str(int(round(x)))
     return f"{x:.6g}"
 
 
-# ================== ОТПРАВКА КАРТОЧКИ ТЕМЫ ==================
-async def send_topic(target, root_key: str, idx: int):
+# ================== ГЛАВНЫЙ ХЕЛПЕР: ПОКАЗ СООБЩЕНИЯ ==================
+async def show_message(
+    callback: types.CallbackQuery,
+    *,
+    text: str | None = None,
+    kb=None,
+    photo_bytes: bytes | None = None,
+):
+    """
+    Гарантирует, что в чате остаётся ровно ОДНО сообщение навигации.
+    - фото → фото: edit_media
+    - текст → текст: edit_text
+    - типы разные: удалить старое и прислать новое
+    """
+    msg = callback.message
+    wants_photo = photo_bytes is not None
+    is_photo = bool(msg.photo)
+
+    # --- Оба фото: редактируем media ---
+    if wants_photo and is_photo:
+        try:
+            await msg.edit_media(
+                media=InputMediaPhoto(
+                    media=BufferedInputFile(photo_bytes, filename="f.png"),
+                    caption=text, parse_mode="HTML",
+                ),
+                reply_markup=kb,
+            )
+            return
+        except Exception:
+            logging.exception("edit_media failed — fallback")
+
+    # --- Оба текст: редактируем текст ---
+    elif not wants_photo and not is_photo:
+        try:
+            await msg.edit_text(text, parse_mode="HTML", reply_markup=kb)
+            return
+        except Exception:
+            logging.exception("edit_text failed — fallback")
+
+    # --- Типы разные: удаляем старое и присылаем новое ---
+    try:
+        await msg.delete()
+    except Exception:
+        logging.exception("delete failed — продолжаем")
+
+    try:
+        if wants_photo:
+            await bot.send_photo(
+                msg.chat.id,
+                BufferedInputFile(photo_bytes, filename="f.png"),
+                caption=text, parse_mode="HTML", reply_markup=kb,
+            )
+        else:
+            await bot.send_message(
+                msg.chat.id, text, parse_mode="HTML", reply_markup=kb,
+            )
+    except Exception:
+        logging.exception("send fallback failed")
+
+
+# ================== КАРТОЧКА ТЕМЫ ==================
+async def show_topic(callback: types.CallbackQuery, root_key: str, idx: int):
     t = get_topic(root_key, idx)
     section_title = ROOT_SECTIONS[root_key]["title"].replace("📐 ", "").replace("⚛️ ", "")
 
@@ -119,29 +180,14 @@ async def send_topic(target, root_key: str, idx: int):
 
     kb = kb_topic(root_key, idx)
 
+    photo_bytes = None
     if t.get("svg"):
         try:
-            png = svg_to_png(t["svg"]())
-            await target.answer_photo(
-                BufferedInputFile(png, filename="fig.png"),
-                caption=caption, parse_mode="HTML", reply_markup=kb,
-            )
-            return
+            photo_bytes = svg_to_png(t["svg"]())
         except Exception:
             logging.exception("SVG render failed")
-    await target.answer(caption, parse_mode="HTML", reply_markup=kb)
 
-
-# ================== ХЕЛПЕР РЕДАКТИРОВАНИЯ ==================
-async def edit_or_send(callback: types.CallbackQuery, text: str, kb):
-    msg = callback.message
-    try:
-        if msg.photo:
-            await msg.edit_caption(caption=text, parse_mode="HTML", reply_markup=kb)
-        else:
-            await msg.edit_text(text, parse_mode="HTML", reply_markup=kb)
-    except Exception:
-        await msg.answer(text, parse_mode="HTML", reply_markup=kb)
+    await show_message(callback, text=caption, kb=kb, photo_bytes=photo_bytes)
 
 
 # ================== КОМАНДЫ ==================
@@ -150,7 +196,7 @@ async def cmd_start(m: types.Message, state: FSMContext):
     await state.clear()
     await m.answer(
         "<b>СПРАВОЧНИК</b>\n"
-        "Геометрия · Физика\n"
+        "Геометрия · Физика 7–9 класс\n"
         "─────────────────────\n"
         "Формулы, теоремы, рисунки.\n"
         "Калькуляторы и решение задач по описанию.\n\n"
@@ -165,15 +211,15 @@ async def cmd_help(m: types.Message):
         "<b>СПРАВКА</b>\n"
         "─────────────────────\n\n"
         "• <b>ГЕОМЕТРИЯ</b> / <b>ФИЗИКА</b> — справочник\n"
-        "• <b>РЕШИТЬ ЗАДАЧУ</b> — опишите задачу словами,\n"
+        "• <b>РЕШИТЬ ЗАДАЧУ</b> — опишите словами,\n"
         "  бот подберёт формулу и решит.\n\n"
         "<b>Примеры задач:</b>\n"
         "<i>Машина едет 340 км/ч пол часа. Какой путь?</i>\n"
         "<i>Тело массой 5 кг. Найди силу тяжести.</i>\n"
         "<i>Прямоугольный треугольник с катетами 3 и 4. Найди гипотенузу.</i>\n"
-        "<i>Круг радиусом 3. Найди площадь.</i>\n\n"
-        "Также можно просто отправить слово для поиска:\n"
-        "<i>пифагор</i>, <i>скорость</i>, <i>ом</i>\n\n"
+        "<i>Поезд прошёл 200 км за 2 часа. Найди скорость.</i>\n\n"
+        "Также можно отправить слово для поиска:\n"
+        "<i>пифагор</i>, <i>ускорение</i>, <i>ом</i>\n\n"
         "/start — меню\n"
         "/cancel — отмена ввода",
         parse_mode="HTML", reply_markup=kb_main(),
@@ -192,10 +238,10 @@ async def cmd_cancel(m: types.Message, state: FSMContext):
 # ================== НАВИГАЦИЯ ==================
 @dp.callback_query(F.data == "back:main")
 async def cb_main(cb: types.CallbackQuery):
-    await edit_or_send(
+    await show_message(
         cb,
-        "<b>СПРАВОЧНИК</b>\n─────────────────────\nВыберите раздел:",
-        kb_main(),
+        text="<b>СПРАВОЧНИК</b>\n─────────────────────\nВыберите раздел:",
+        kb=kb_main(),
     )
     await cb.answer()
 
@@ -216,10 +262,10 @@ async def cb_root(cb: types.CallbackQuery):
         await cb.answer("Ошибка", show_alert=True)
         return
     title = ROOT_SECTIONS[root_key]["title"]
-    await edit_or_send(
+    await show_message(
         cb,
-        f"<b>{title}</b>\n─────────────────────\nПодраздел:",
-        kb_subs(root_key),
+        text=f"<b>{title}</b>\n─────────────────────\nПодраздел:",
+        kb=kb_subs(root_key),
     )
     await cb.answer()
 
@@ -231,10 +277,10 @@ async def cb_section(cb: types.CallbackQuery):
         await cb.answer("Ошибка", show_alert=True)
         return
     _, root_key, section = parts
-    await edit_or_send(
+    await show_message(
         cb,
-        f"<b>{section.upper()}</b>\n─────────────────────\nТема:",
-        kb_section(root_key, section),
+        text=f"<b>{section.upper()}</b>\n─────────────────────\nТема:",
+        kb=kb_section(root_key, section),
     )
     await cb.answer()
 
@@ -253,7 +299,7 @@ async def cb_topic(cb: types.CallbackQuery, state: FSMContext):
         return
     await state.clear()
     await cb.answer()
-    await send_topic(cb.message, root_key, idx)
+    await show_topic(cb, root_key, idx)
 
 
 # ================== РЕШИТЬ ПО ФОРМУЛЕ / РЕШИТЬ ЗАДАЧУ ==================
@@ -261,7 +307,7 @@ async def cb_topic(cb: types.CallbackQuery, state: FSMContext):
 async def cb_solve(cb: types.CallbackQuery):
     parts = cb.data.split(":", 2)
 
-    # --- Кнопка "РЕШИТЬ ЗАДАЧУ" из главного меню ---
+    # --- Кнопка "РЕШИТЬ ЗАДАЧУ" ---
     if len(parts) == 2 and parts[1] == "start":
         await cb.message.answer(
             "<b>РЕШЕНИЕ ЗАДАЧИ</b>\n"
@@ -272,13 +318,14 @@ async def cb_solve(cb: types.CallbackQuery):
             "<i>Тело массой 5 кг. Найди силу тяжести.</i>\n"
             "<i>Прямоугольный треугольник с катетами 3 и 4. Найди гипотенузу.</i>\n"
             "<i>Круг радиусом 3. Найди площадь.</i>\n"
-            "<i>Нагрели 2 кг воды на 50 градусов. Найди теплоту.</i>",
+            "<i>Нагрели 2 кг воды на 50 градусов. Найди теплоту.</i>\n"
+            "<i>Поезд прошёл 200 км за 2 часа. Найди скорость.</i>",
             parse_mode="HTML",
         )
         await cb.answer()
         return
 
-    # --- Калькулятор для конкретной темы ---
+    # --- Калькулятор для темы ---
     if len(parts) != 3:
         await cb.answer("Ошибка", show_alert=True)
         return
@@ -370,11 +417,11 @@ async def calc_input(m: types.Message, state: FSMContext):
     try:
         result = calc["solvers"][target](**values)
     except ZeroDivisionError:
-        await m.answer("Деление на ноль.", reply_markup=kb_topic(root_key, idx))
+        await m.answer("Деление на ноль.")
         await state.clear()
         return
     except Exception as e:
-        await m.answer(f"Ошибка: {e}", reply_markup=kb_topic(root_key, idx))
+        await m.answer(f"Ошибка: {e}")
         await state.clear()
         return
 
@@ -390,10 +437,9 @@ async def calc_input(m: types.Message, state: FSMContext):
     await state.clear()
 
 
-# ================== ПОИСК + РЕШЕНИЕ ЗАДАЧ ПО ОПИСАНИЮ ==================
+# ================== ПОИСК + РЕШЕНИЕ ЗАДАЧ ==================
 @dp.message(F.text & ~F.text.startswith("/"))
 async def search_handler(m: types.Message, state: FSMContext):
-    # Если идёт ввод чисел в калькуляторе — не мешаем
     if await state.get_state() == St.calc:
         return
 
@@ -415,7 +461,6 @@ async def search_handler(m: types.Message, state: FSMContext):
 
             given = "\n".join(f"  {k} = {fmt_number(v)}" for k, v in values.items())
 
-            # Подбираем единицы измерения для ответа
             unit_suffix = ""
             if target == "s":
                 unit_suffix = " км" if has_kmh else " м"
@@ -439,6 +484,12 @@ async def search_handler(m: types.Message, state: FSMContext):
                 unit_suffix = " В"
             elif target == "R":
                 unit_suffix = " Ом"
+            elif target == "a":
+                unit_suffix = " м/с²"
+            elif target == "lam":
+                unit_suffix = " м"
+            elif target == "T":
+                unit_suffix = " с"
 
             await m.answer(
                 f"<b>РЕШЕНИЕ</b>\n"
@@ -452,7 +503,7 @@ async def search_handler(m: types.Message, state: FSMContext):
             )
             return
 
-    # 2. Если не задача — обычный поиск
+    # 2. Обычный поиск
     if len(text) < 2:
         await m.answer("Введите хотя бы 2 символа.")
         return
@@ -475,7 +526,7 @@ async def search_handler(m: types.Message, state: FSMContext):
     for root_key, idx in results[:20]:
         t = get_topic(root_key, idx)
         kb.button(text=t["name"], callback_data=f"topic:{root_key}:{idx}")
-    kb.button(text="НАЗАД", callback_data="back:main")
+    kb.button(text="⬅️ НАЗАД", callback_data="back:main")
     kb.adjust(1)
 
     await m.answer(
@@ -484,7 +535,7 @@ async def search_handler(m: types.Message, state: FSMContext):
     )
 
 
-# ================== HEALTH-СЕРВЕР ДЛЯ RENDER ==================
+# ================== HEALTH ==================
 async def health(request):
     return web.Response(text="ok")
 
