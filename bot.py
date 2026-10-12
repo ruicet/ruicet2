@@ -36,10 +36,10 @@ class St(StatesGroup):
 # ================== КЛАВИАТУРЫ ==================
 def kb_main():
     kb = InlineKeyboardBuilder()
-    kb.button(text="📐 ГЕОМЕТРИЯ", callback_data="root:geom")
-    kb.button(text="⚛️ ФИЗИКА", callback_data="root:phys")
-    kb.button(text="🧠 РЕШИТЬ ЗАДАЧУ", callback_data="solve:start")
-    kb.button(text="ℹ️ СПРАВКА", callback_data="help")
+    kb.button(text="📐  ГЕОМЕТРИЯ", callback_data="root:geom")
+    kb.button(text="⚛️  ФИЗИКА", callback_data="root:phys")
+    kb.button(text="🧠  РЕШИТЬ ЗАДАЧУ", callback_data="solve:start")
+    kb.button(text="ℹ️  СПРАВКА", callback_data="help")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -48,7 +48,7 @@ def kb_subs(root_key: str):
     kb = InlineKeyboardBuilder()
     for section in get_subsections(root_key):
         kb.button(text=section.upper(), callback_data=f"sec:{root_key}:{section}")
-    kb.button(text="⬅️ НАЗАД", callback_data="back:main")
+    kb.button(text="⬅️  НАЗАД", callback_data="back:main")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -57,7 +57,7 @@ def kb_section(root_key: str, section: str):
     kb = InlineKeyboardBuilder()
     for idx, name in get_subsections(root_key).get(section, []):
         kb.button(text=name, callback_data=f"topic:{root_key}:{idx}")
-    kb.button(text="⬅️ НАЗАД", callback_data=f"root:{root_key}")
+    kb.button(text="⬅️  НАЗАД", callback_data=f"root:{root_key}")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -66,8 +66,8 @@ def kb_topic(root_key: str, idx: int):
     t = get_topic(root_key, idx)
     kb = InlineKeyboardBuilder()
     if t.get("calc"):
-        kb.button(text="🧮 РЕШИТЬ ПО ФОРМУЛЕ", callback_data=f"solve:{root_key}:{idx}")
-    kb.button(text="⬅️ НАЗАД", callback_data=f"sec:{root_key}:{t['section']}")
+        kb.button(text="🧮  РЕШИТЬ ПО ФОРМУЛЕ", callback_data=f"solve:{root_key}:{idx}")
+    kb.button(text="⬅️  НАЗАД", callback_data=f"sec:{root_key}:{t['section']}")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -78,7 +78,7 @@ def kb_targets(root_key: str, idx: int):
     for name, _ in calc["vars"]:
         if name in calc["solvers"]:
             kb.button(text=f"Найти {name}", callback_data=f"pick:{root_key}:{idx}:{name}")
-    kb.button(text="⬅️ НАЗАД", callback_data=f"topic:{root_key}:{idx}")
+    kb.button(text="⬅️  НАЗАД", callback_data=f"topic:{root_key}:{idx}")
     kb.adjust(2)
     return kb.as_markup()
 
@@ -100,25 +100,24 @@ def fmt_number(x) -> str:
     return f"{x:.6g}"
 
 
-# ================== ГЛАВНЫЙ ХЕЛПЕР: ПОКАЗ СООБЩЕНИЯ ==================
+# ================== ХЕЛПЕР: ПОКАЗ СООБЩЕНИЯ ==================
 async def show_message(
     callback: types.CallbackQuery,
     *,
-    text: str | None = None,
+    text: str = None,
     kb=None,
-    photo_bytes: bytes | None = None,
+    photo_bytes: bytes = None,
 ):
     """
-    Гарантирует, что в чате остаётся ровно ОДНО сообщение навигации.
-    - фото → фото: edit_media
+    Гарантирует одно сообщение навигации в чате:
+    - фото → фото: edit_media (меняет картинку на месте)
     - текст → текст: edit_text
-    - типы разные: удалить старое и прислать новое
+    - типы разные: удаляет старое, отправляет новое
     """
     msg = callback.message
     wants_photo = photo_bytes is not None
     is_photo = bool(msg.photo)
 
-    # --- Оба фото: редактируем media ---
     if wants_photo and is_photo:
         try:
             await msg.edit_media(
@@ -130,21 +129,20 @@ async def show_message(
             )
             return
         except Exception:
-            logging.exception("edit_media failed — fallback")
+            logging.exception("edit_media failed")
 
-    # --- Оба текст: редактируем текст ---
     elif not wants_photo and not is_photo:
         try:
             await msg.edit_text(text, parse_mode="HTML", reply_markup=kb)
             return
         except Exception:
-            logging.exception("edit_text failed — fallback")
+            logging.exception("edit_text failed")
 
-    # --- Типы разные: удаляем старое и присылаем новое ---
+    # Типы разные: удалить и прислать новое
     try:
         await msg.delete()
     except Exception:
-        logging.exception("delete failed — продолжаем")
+        logging.exception("delete failed")
 
     try:
         if wants_photo:
@@ -158,7 +156,7 @@ async def show_message(
                 msg.chat.id, text, parse_mode="HTML", reply_markup=kb,
             )
     except Exception:
-        logging.exception("send fallback failed")
+        logging.exception("send failed")
 
 
 # ================== КАРТОЧКА ТЕМЫ ==================
@@ -169,9 +167,11 @@ async def show_topic(callback: types.CallbackQuery, root_key: str, idx: int):
     caption = (
         f"<b>{t['name'].upper()}</b>\n"
         f"<i>{section_title} · {t['section']}</i>\n"
-        "─────────────────────\n\n"
-        f"<b>ФОРМУЛА</b>\n<code>{t['formula']}</code>\n\n"
-        f"<b>ТЕОРЕМА</b>\n{t['theorem']}"
+        "━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"<b>ФОРМУЛА</b>\n"
+        f"<code>{t['formula']}</code>\n\n"
+        f"<b>ТЕОРЕМА</b>\n"
+        f"{t['theorem']}"
     )
     if t.get("example"):
         caption += f"\n\n<b>ПРИМЕР</b>\n{t['example']}"
@@ -196,8 +196,8 @@ async def cmd_start(m: types.Message, state: FSMContext):
     await state.clear()
     await m.answer(
         "<b>СПРАВОЧНИК</b>\n"
-        "Геометрия · Физика 7–9 класс\n"
-        "─────────────────────\n"
+        "<i>Геометрия · Физика 7–9 класс</i>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
         "Формулы, теоремы, рисунки.\n"
         "Калькуляторы и решение задач по описанию.\n\n"
         "Выберите раздел:",
@@ -209,19 +209,18 @@ async def cmd_start(m: types.Message, state: FSMContext):
 async def cmd_help(m: types.Message):
     await m.answer(
         "<b>СПРАВКА</b>\n"
-        "─────────────────────\n\n"
-        "• <b>ГЕОМЕТРИЯ</b> / <b>ФИЗИКА</b> — справочник\n"
-        "• <b>РЕШИТЬ ЗАДАЧУ</b> — опишите словами,\n"
-        "  бот подберёт формулу и решит.\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "• <b>ГЕОМЕТРИЯ</b> / <b>ФИЗИКА</b> — справочник по темам\n"
+        "• <b>РЕШИТЬ ЗАДАЧУ</b> — опишите словами, бот подберёт формулу\n\n"
         "<b>Примеры задач:</b>\n"
         "<i>Машина едет 340 км/ч пол часа. Какой путь?</i>\n"
         "<i>Тело массой 5 кг. Найди силу тяжести.</i>\n"
+        "<i>Тело двигалось 20 м/с и за 3 секунды разогналось до 5 м/с. Найди ускорение.</i>\n"
         "<i>Прямоугольный треугольник с катетами 3 и 4. Найди гипотенузу.</i>\n"
-        "<i>Поезд прошёл 200 км за 2 часа. Найди скорость.</i>\n\n"
-        "Также можно отправить слово для поиска:\n"
-        "<i>пифагор</i>, <i>ускорение</i>, <i>ом</i>\n\n"
-        "/start — меню\n"
-        "/cancel — отмена ввода",
+        "<i>Нагрели 2 кг воды на 50 градусов. Найди теплоту.</i>\n"
+        "<i>Найди длину волны если частота 100 Гц а скорость 340 м/с.</i>\n\n"
+        "Также можно отправить одно слово для поиска: <i>пифагор</i>, <i>ускорение</i>.\n\n"
+        "/start — меню  ·  /cancel — отмена",
         parse_mode="HTML", reply_markup=kb_main(),
     )
 
@@ -240,7 +239,7 @@ async def cmd_cancel(m: types.Message, state: FSMContext):
 async def cb_main(cb: types.CallbackQuery):
     await show_message(
         cb,
-        text="<b>СПРАВОЧНИК</b>\n─────────────────────\nВыберите раздел:",
+        text="<b>СПРАВОЧНИК</b>\n━━━━━━━━━━━━━━━━━━━━━\nВыберите раздел:",
         kb=kb_main(),
     )
     await cb.answer()
@@ -264,7 +263,7 @@ async def cb_root(cb: types.CallbackQuery):
     title = ROOT_SECTIONS[root_key]["title"]
     await show_message(
         cb,
-        text=f"<b>{title}</b>\n─────────────────────\nПодраздел:",
+        text=f"<b>{title}</b>\n━━━━━━━━━━━━━━━━━━━━━\nПодраздел:",
         kb=kb_subs(root_key),
     )
     await cb.answer()
@@ -279,7 +278,7 @@ async def cb_section(cb: types.CallbackQuery):
     _, root_key, section = parts
     await show_message(
         cb,
-        text=f"<b>{section.upper()}</b>\n─────────────────────\nТема:",
+        text=f"<b>{section.upper()}</b>\n━━━━━━━━━━━━━━━━━━━━━\nТема:",
         kb=kb_section(root_key, section),
     )
     await cb.answer()
@@ -302,30 +301,32 @@ async def cb_topic(cb: types.CallbackQuery, state: FSMContext):
     await show_topic(cb, root_key, idx)
 
 
-# ================== РЕШИТЬ ПО ФОРМУЛЕ / РЕШИТЬ ЗАДАЧУ ==================
+# ================== РЕШИТЬ (по формуле / задачу) ==================
 @dp.callback_query(F.data.startswith("solve:"))
 async def cb_solve(cb: types.CallbackQuery):
     parts = cb.data.split(":", 2)
 
-    # --- Кнопка "РЕШИТЬ ЗАДАЧУ" ---
+    # Кнопка "РЕШИТЬ ЗАДАЧУ"
     if len(parts) == 2 and parts[1] == "start":
         await cb.message.answer(
             "<b>РЕШЕНИЕ ЗАДАЧИ</b>\n"
-            "─────────────────────\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
             "Опишите задачу одним сообщением.\n\n"
             "<b>Примеры:</b>\n"
             "<i>Машина едет 340 км/ч пол часа. Какой путь?</i>\n"
             "<i>Тело массой 5 кг. Найди силу тяжести.</i>\n"
+            "<i>Тело двигалось 20 м/с и за 3 секунды разогналось до 5 м/с. Найди ускорение.</i>\n"
             "<i>Прямоугольный треугольник с катетами 3 и 4. Найди гипотенузу.</i>\n"
             "<i>Круг радиусом 3. Найди площадь.</i>\n"
             "<i>Нагрели 2 кг воды на 50 градусов. Найди теплоту.</i>\n"
-            "<i>Поезд прошёл 200 км за 2 часа. Найди скорость.</i>",
+            "<i>Найди длину волны если частота 100 Гц а скорость 340 м/с.</i>\n"
+            "<i>Линза с фокусом 0.5 м. Найди оптическую силу.</i>",
             parse_mode="HTML",
         )
         await cb.answer()
         return
 
-    # --- Калькулятор для темы ---
+    # Калькулятор для темы
     if len(parts) != 3:
         await cb.answer("Ошибка", show_alert=True)
         return
@@ -374,7 +375,7 @@ async def cb_pick(cb: types.CallbackQuery, state: FSMContext):
     await state.set_state(St.calc)
     await cb.answer()
     await cb.message.answer(
-        f"Найти: <b>{target}</b>\n"
+        f"<b>Найти: {target}</b>\n"
         f"Значений: {len(needed)}\n\n"
         f"Введите <b>{labels[needed[0]]}</b> (1 из {len(needed)}):",
         parse_mode="HTML",
@@ -428,8 +429,8 @@ async def calc_input(m: types.Message, state: FSMContext):
     given = "\n".join(f"  {k} = {fmt_number(v)}" for k, v in values.items())
     await m.answer(
         f"<b>РЕЗУЛЬТАТ</b>\n"
-        "─────────────────────\n"
-        f"Формула: <code>{t['formula']}</code>\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"<b>Формула</b>  <code>{t['formula']}</code>\n\n"
         f"<b>Дано</b>\n{given}\n\n"
         f"<b>{target} = {fmt_number(result)}</b>",
         parse_mode="HTML", reply_markup=kb_topic(root_key, idx),
@@ -437,7 +438,7 @@ async def calc_input(m: types.Message, state: FSMContext):
     await state.clear()
 
 
-# ================== ПОИСК + РЕШЕНИЕ ЗАДАЧ ==================
+# ================== ПОИСК + АВТО-РЕШЕНИЕ ==================
 @dp.message(F.text & ~F.text.startswith("/"))
 async def search_handler(m: types.Message, state: FSMContext):
     if await state.get_state() == St.calc:
@@ -445,7 +446,7 @@ async def search_handler(m: types.Message, state: FSMContext):
 
     text = m.text.strip()
 
-    # 1. Сначала пробуем решить как задачу
+    # 1. Попытка решить как задачу
     if len(text) >= 6 and any(c.isdigit() for c in text):
         result = solve_problem(text)
         if result:
@@ -461,6 +462,7 @@ async def search_handler(m: types.Message, state: FSMContext):
 
             given = "\n".join(f"  {k} = {fmt_number(v)}" for k, v in values.items())
 
+            # Единица ответа
             unit_suffix = ""
             if target == "s":
                 unit_suffix = " км" if has_kmh else " м"
@@ -490,12 +492,22 @@ async def search_handler(m: types.Message, state: FSMContext):
                 unit_suffix = " м"
             elif target == "T":
                 unit_suffix = " с"
+            elif target == "nu":
+                unit_suffix = " Гц"
+            elif target == "D":
+                unit_suffix = " дптр"
+            elif target == "C":
+                unit_suffix = " м"
+            elif target == "S" and root_key == "geom":
+                unit_suffix = " (кв. ед.)"
+            elif target == "h" and root_key == "phys":
+                unit_suffix = " м"
 
             await m.answer(
                 f"<b>РЕШЕНИЕ</b>\n"
-                "─────────────────────\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
                 f"<i>{t['section']} · {root_title}</i>\n\n"
-                f"<b>Формула</b>\n<code>{t['formula']}</code>\n\n"
+                f"<b>Формула</b>  <code>{t['formula']}</code>\n\n"
                 f"<b>Дано</b>\n{given}\n\n"
                 f"<b>Ответ</b>\n{target} = {fmt_number(answer)}{unit_suffix}",
                 parse_mode="HTML",
@@ -512,10 +524,10 @@ async def search_handler(m: types.Message, state: FSMContext):
     if not results:
         await m.answer(
             "<b>НЕ УДАЛОСЬ РАСПОЗНАТЬ</b>\n"
-            "─────────────────────\n"
-            "Попробуйте описать задачу подробнее:\n"
-            "• Укажите единицы: <i>км/ч, кг, минуты, градусов</i>\n"
-            "• Явно напишите, что найти: <i>найди путь</i>\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "Попробуйте описать подробнее:\n"
+            "• Указать единицы: <i>км/ч, кг, минуты, градусов</i>\n"
+            "• Явно написать: <i>найди путь</i>\n\n"
             "Или откройте раздел ГЕОМЕТРИЯ / ФИЗИКА\n"
             "и найдите тему вручную.",
             parse_mode="HTML", reply_markup=kb_main(),
@@ -526,7 +538,7 @@ async def search_handler(m: types.Message, state: FSMContext):
     for root_key, idx in results[:20]:
         t = get_topic(root_key, idx)
         kb.button(text=t["name"], callback_data=f"topic:{root_key}:{idx}")
-    kb.button(text="⬅️ НАЗАД", callback_data="back:main")
+    kb.button(text="⬅️  НАЗАД", callback_data="back:main")
     kb.adjust(1)
 
     await m.answer(
