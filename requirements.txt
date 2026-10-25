@@ -1,3 +1,7 @@
+
 aiogram
 cairosvg
 aiohttp
+phonenumbers
+beautifulsoup4
+requests
