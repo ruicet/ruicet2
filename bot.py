@@ -1,11 +1,6 @@
 import asyncio
 import logging
 import os
-import phonenumbers
-from phonenumbers import carrier, geocoder
-import requests
-from bs4 import BeautifulSoup
-import aiohttp
 
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
@@ -34,8 +29,6 @@ dp = Dispatcher(storage=MemoryStorage())
 # ================== СОСТОЯНИЯ ==================
 class St(StatesGroup):
     calc = State()
-    osint_phone = State()
-    osint_tg = State()
 
 # ================== КЛАВИАТУРЫ ==================
 def kb_main():
@@ -43,16 +36,7 @@ def kb_main():
     kb.button(text="📐  ГЕОМЕТРИЯ", callback_data="root:geom")
     kb.button(text="⚛️  ФИЗИКА", callback_data="root:phys")
     kb.button(text="🧠  РЕШИТЬ ЗАДАЧУ", callback_data="solve:start")
-    kb.button(text="⭐", callback_data="osint_menu")  # Секретная кнопка
     kb.button(text="ℹ️  СПРАВКА", callback_data="help")
-    kb.adjust(1)
-    return kb.as_markup()
-
-def kb_osint_menu():
-    kb = InlineKeyboardBuilder()
-    kb.button(text="📱 По номеру телефона", callback_data="osint:phone")
-    kb.button(text="✈️ По Telegram (юзернейм)", callback_data="osint:tg")
-    kb.button(text="⬅️  НАЗАД", callback_data="back:main")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -155,6 +139,7 @@ async def show_topic(callback: types.CallbackQuery, root_key: str, idx: int):
     if t.get("example"):
         caption += f"\n\n<b>ПРИМЕР</b>\n{t['example']}"
     if len(caption) > 1000: caption = caption[:1000] + "…"
+    
     photo_bytes = None
     if t.get("svg"):
         try: photo_bytes = svg_to_png(t["svg"]())
@@ -165,7 +150,11 @@ async def show_topic(callback: types.CallbackQuery, root_key: str, idx: int):
 @dp.message(Command("start"))
 async def cmd_start(m: types.Message, state: FSMContext):
     await state.clear()
-    await m.answer("<b>СУПЕР-БОТ: ФИЗИКА & ГЕОМЕТРИЯ</b>\n━━━━━━━━━━━━━━━━━━━━━\nВыберите раздел:", parse_mode="HTML", reply_markup=kb_main())
+    await m.answer("<b>СУПЕР-БОТ: ФИЗИКА & ГЕОМЕТРИЯ</b>\n<i>Учебный справочник</i>\n━━━━━━━━━━━━━━━━━━━━━\nВыберите раздел:", parse_mode="HTML", reply_markup=kb_main())
+
+@dp.message(Command("help"))
+async def cmd_help(m: types.Message):
+    await m.answer("<b>СПРАВКА</b>\n━━━━━━━━━━━━━━━━━━━━━\n• <b>ГЕОМЕТРИЯ</b> / <b>ФИЗИКА</b> — справочник по темам\n• <b>РЕШИТЬ ЗАДАЧУ</b> — опишите словами, бот подберёт формулу\n\n/start — меню  ·  /cancel — отмена", parse_mode="HTML", reply_markup=kb_main())
 
 @dp.message(Command("cancel"))
 async def cmd_cancel(m: types.Message, state: FSMContext):
@@ -179,6 +168,11 @@ async def cmd_cancel(m: types.Message, state: FSMContext):
 @dp.callback_query(F.data == "back:main")
 async def cb_main(cb: types.CallbackQuery):
     await show_message(cb, text="<b>ГЛАВНОЕ МЕНЮ</b>\n━━━━━━━━━━━━━━━━━━━━━", kb=kb_main())
+    await cb.answer()
+
+@dp.callback_query(F.data == "help")
+async def cb_help(cb: types.CallbackQuery):
+    await cb.message.answer("Отправьте задачу словами или используйте меню.", reply_markup=kb_main())
     await cb.answer()
 
 @dp.callback_query(F.data.startswith("root:"))
@@ -250,133 +244,10 @@ async def calc_input(m: types.Message, state: FSMContext):
     await m.answer(f"<b>РЕЗУЛЬТАТ</b>\n━━━━━━━━━━━━━━━━━━━━━\n<b>Формула</b>  <code>{t['formula']}</code>\n\n<b>Дано</b>\n{given}\n\n<b>{target} = {fmt_number(result)}{unit_str}</b>", parse_mode="HTML", reply_markup=kb_topic(root_key, idx))
     await state.clear()
 
-# ================== OSINT МОДУЛЬ ==================
-@dp.callback_query(F.data == "osint_menu")
-async def cb_osint_menu(cb: types.CallbackQuery, state: FSMContext):
-    await state.clear()
-    await show_message(cb, text="<b>🕵️‍♂️ OSINT МОДУЛЬ</b>\n━━━━━━━━━━━━━━━━━━━━━\nВыберите тип данных для поиска:", kb=kb_osint_menu())
-    await cb.answer()
-
-@dp.callback_query(F.data == "osint:phone")
-async def cb_osint_phone(cb: types.CallbackQuery, state: FSMContext):
-    await state.set_state(St.osint_phone)
-    await cb.message.edit_text("📱 <b>Введите номер телефона</b> (в формате +79...):\n\nДля отмены: /cancel", parse_mode="HTML")
-    await cb.answer()
-
-@dp.message(St.osint_phone, F.text)
-async def process_osint_phone(m: types.Message, state: FSMContext):
-    text = m.text.strip()
-    try:
-        parsed = phonenumbers.parse(text, "RU")
-        if not phonenumbers.is_valid_number(parsed):
-            await m.answer("❌ Неверный формат. Введите с кодом страны (+79512041698).")
-            return
-        op = carrier.name_for_number(parsed, "ru") or "Неизвестен / MVNO"
-        reg = geocoder.description_for_number(parsed, "ru") or "Не определен"
-        clean_num = text.replace("+", "").replace(" ", "")
-        
-        kb = InlineKeyboardBuilder()
-        kb.button(text="Искать в ВК", url=f"https://vk.com/search?c%5Bsection%5D=people")
-        kb.button(text="Искать на Авито", url=f"https://yandex.ru/search/?text=%22{clean_num}%22+site%3Aavito.ru")
-        kb.button(text="Спам-база", url=f"https://zvonili.com/phone/{clean_num}")
-        kb.adjust(1)
-        
-        await m.answer(f"📱 <b>РЕЗУЛЬТАТ ПО НОМЕРУ:</b> <code>{text}</code>\n━━━━━━━━━━━━━━━━━━━━━\n📡 <b>Оператор:</b> {op}\n🗺 <b>Регион:</b> {reg}\n\n👇 Используй кнопки ниже:", parse_mode="HTML", reply_markup=kb.as_markup())
-        await state.clear()
-    except Exception as e:
-        await m.answer(f"❌ Ошибка: {e}"); await state.clear()
-
-@dp.callback_query(F.data == "osint:tg")
-
-async def cb_osint_tg(cb: types.CallbackQuery, state: FSMContext):
-    await state.set_state(St.osint_tg)
-    await cb.message.edit_text("✈️ <b>Введите Telegram юзернейм</b> (например, @durov):\n\nДля отмены: /cancel", parse_mode="HTML")
-    await cb.answer()
-
-@dp.message(St.osint_tg, F.text)
-async def process_osint_tg(m: types.Message, state: FSMContext):
-    clean_user = m.text.replace("@", "").strip()
-    msg = await m.answer("🔍 Сканирую Telegram и генерирую ссылки...")
-    
-    url = f"https://t.me/{clean_user}"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'
-    }
-    
-    try:
-        # Асинхронный запрос, чтобы не вешать бота
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, timeout=10) as response:
-                
-                if response.status != 200:
-                    await msg.edit_text(f"❌ Telegram заблокировал запрос (Код: {response.status}). Возможно, IP сервера в бане.")
-                    await state.clear()
-                    return
-                
-                html = await response.text()
-                soup = BeautifulSoup(html, 'html.parser')
-                title_tag = soup.find("div", class_="tgme_page_title")
-                
-                if title_tag:
-                    name = title_tag.text.strip()
-                    bio_tag = soup.find("div", class_="tgme_page_description")
-                    bio_text = bio_tag.text.strip() if bio_tag else "Нет описания"
-                    img_tag = soup.find("img", class_="tgme_page_photo_image")
-                    avatar_url = img_tag["src"] if img_tag else None
-                    
-                    # Создаем кнопки для дальнейшего поиска
-                    kb = InlineKeyboardBuilder()
-                    kb.button(text="Искать в ВК", url=f"https://vk.com/{clean_user}")
-                    kb.button(text="Искать в Яндексе", url=f"https://yandex.ru/search/?text=%22{clean_user}%22")
-                    kb.button(text="Поиск по форумам", url=f"https://yandex.ru/search/?text=%22{clean_user}%22+forum")
-                    kb.adjust(1)
-                    
-                    caption = (
-                        f"✈️ <b>ПРОФИЛЬ:</b> @{clean_user}\n"
-                        "━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"👤 <b>Имя:</b> {name}\n"
-                        f"📝 <b>Bio:</b> {bio_text}\n\n"
-                        f"👇 <i>Дополнительный поиск:</i>"
-                    )
-                    
-                    # Скачиваем аватарку сами, чтобы Telegram не ругался
-                    if avatar_url:
-                        try:
-                            async with aiohttp.ClientSession() as img_session:
-                                async with img_session.get(avatar_url) as img_resp:
-                                    if img_resp.status == 200:
-                                        img_bytes = await img_resp.read()
-                                        await bot.send_photo(
-                                            chat_id=m.chat.id, 
-                                            photo=BufferedInputFile(img_bytes, filename="avatar.jpg"), 
-                                            caption=caption, 
-                                            parse_mode="HTML", 
-                                            reply_markup=kb.as_markup()
-                                        )
-                                        await msg.delete()
-                                        await state.clear()
-                                        return
-                        except Exception:
-                            pass # Если картинка не скачалась, идем дальше и отправляем только текст
-                    
-                    # Если аватарки нет или она не скачалась
-                    await msg.edit_text(caption, parse_mode="HTML", reply_markup=kb.as_markup())
-                    
-                else:
-                    await msg.edit_text(f"❌ Профиль <b>@{clean_user}</b> не найден или скрыт настройками приватности.", parse_mode="HTML")
-                    
-    except asyncio.TimeoutError:
-        await msg.edit_text("❌ Таймаут. Сервер Render не смог достучаться до Telegram за 10 секунд.")
-    except Exception as e:
-        await msg.edit_text(f"❌ Ошибка соединения: {str(e)[:100]}")
-    finally:
-        await state.clear()
-
 # ================== ПОИСК (ТЕКСТ) ==================
 @dp.message(F.text & ~F.text.startswith("/"))
 async def search_handler(m: types.Message, state: FSMContext):
-    if await state.get_state() in [St.calc, St.osint_phone, St.osint_tg]:
+    if await state.get_state() == St.calc:
         return
 
     text = m.text.strip()
