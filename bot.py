@@ -287,6 +287,7 @@ async def process_osint_phone(m: types.Message, state: FSMContext):
         await m.answer(f"❌ Ошибка: {e}"); await state.clear()
 
 @dp.callback_query(F.data == "osint:tg")
+
 async def cb_osint_tg(cb: types.CallbackQuery, state: FSMContext):
     await state.set_state(St.osint_tg)
     await cb.message.edit_text("✈️ <b>Введите Telegram юзернейм</b> (например, @durov):\n\nДля отмены: /cancel", parse_mode="HTML")
@@ -309,7 +310,7 @@ async def process_osint_tg(m: types.Message, state: FSMContext):
             async with session.get(url, headers=headers, timeout=10) as response:
                 
                 if response.status != 200:
-                    await msg.edit_text(f"❌ Telegram заблокировал запрос (Код: {response.status}). Возможно, IP сервера в бане. Попробуйте позже.")
+                    await msg.edit_text(f"❌ Telegram заблокировал запрос (Код: {response.status}). Возможно, IP сервера в бане.")
                     await state.clear()
                     return
                 
@@ -322,7 +323,7 @@ async def process_osint_tg(m: types.Message, state: FSMContext):
                     bio_tag = soup.find("div", class_="tgme_page_description")
                     bio_text = bio_tag.text.strip() if bio_tag else "Нет описания"
                     img_tag = soup.find("img", class_="tgme_page_photo_image")
-                    avatar = img_tag["src"] if img_tag else None
+                    avatar_url = img_tag["src"] if img_tag else None
                     
                     # Создаем кнопки для дальнейшего поиска
                     kb = InlineKeyboardBuilder()
@@ -339,11 +340,29 @@ async def process_osint_tg(m: types.Message, state: FSMContext):
                         f"👇 <i>Дополнительный поиск:</i>"
                     )
                     
-                    if avatar:
-                        await bot.send_photo(chat_id=m.chat.id, photo=avatar, caption=caption, parse_mode="HTML", reply_markup=kb.as_markup())
-                        await msg.delete()
-                    else:
-                        await msg.edit_text(caption, parse_mode="HTML", reply_markup=kb.as_markup())
+                    # Скачиваем аватарку сами, чтобы Telegram не ругался
+                    if avatar_url:
+                        try:
+                            async with aiohttp.ClientSession() as img_session:
+                                async with img_session.get(avatar_url) as img_resp:
+                                    if img_resp.status == 200:
+                                        img_bytes = await img_resp.read()
+                                        await bot.send_photo(
+                                            chat_id=m.chat.id, 
+                                            photo=BufferedInputFile(img_bytes, filename="avatar.jpg"), 
+                                            caption=caption, 
+                                            parse_mode="HTML", 
+                                            reply_markup=kb.as_markup()
+                                        )
+                                        await msg.delete()
+                                        await state.clear()
+                                        return
+                        except Exception:
+                            pass # Если картинка не скачалась, идем дальше и отправляем только текст
+                    
+                    # Если аватарки нет или она не скачалась
+                    await msg.edit_text(caption, parse_mode="HTML", reply_markup=kb.as_markup())
+                    
                 else:
                     await msg.edit_text(f"❌ Профиль <b>@{clean_user}</b> не найден или скрыт настройками приватности.", parse_mode="HTML")
                     
