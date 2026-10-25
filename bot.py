@@ -5,6 +5,7 @@ import phonenumbers
 from phonenumbers import carrier, geocoder
 import requests
 from bs4 import BeautifulSoup
+import aiohttp
 
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
@@ -20,7 +21,6 @@ import cairosvg
 from data import ROOT_SECTIONS, get_subsections, get_topic, search_all
 from solver import solve_problem
 
-
 # ================== НАСТРОЙКИ ==================
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 PORT = int(os.environ.get("PORT", 10000))
@@ -31,13 +31,11 @@ if not BOT_TOKEN:
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-
 # ================== СОСТОЯНИЯ ==================
 class St(StatesGroup):
     calc = State()
     osint_phone = State()
     osint_tg = State()
-
 
 # ================== КЛАВИАТУРЫ ==================
 def kb_main():
@@ -45,7 +43,7 @@ def kb_main():
     kb.button(text="📐  ГЕОМЕТРИЯ", callback_data="root:geom")
     kb.button(text="⚛️  ФИЗИКА", callback_data="root:phys")
     kb.button(text="🧠  РЕШИТЬ ЗАДАЧУ", callback_data="solve:start")
-    kb.button(text="⭐", callback_data="osint_menu")  # <--- СКРЫТАЯ КНОПКА ЗДЕСЬ
+    kb.button(text="⭐", callback_data="osint_menu")  # Секретная кнопка
     kb.button(text="ℹ️  СПРАВКА", callback_data="help")
     kb.adjust(1)
     return kb.as_markup()
@@ -93,16 +91,12 @@ def kb_targets(root_key: str, idx: int):
     kb.adjust(2)
     return kb.as_markup()
 
-
 # ================== SVG → PNG ==================
 def svg_to_png(svg_str: str) -> bytes:
     return cairosvg.svg2png(
         bytestring=svg_str.encode("utf-8"),
-        output_width=900,
-        output_height=675,
-        background_color="#0f1729",
+        output_width=900, output_height=675, background_color="#0f1729",
     )
-
 
 # ================== ФОРМАТ ==================
 def fmt_number(x) -> str:
@@ -110,23 +104,15 @@ def fmt_number(x) -> str:
         return str(int(round(x)))
     return f"{x:.6g}"
 
-
 _UNIT_FOR_TARGET = {
-    "s": "м", "S": "", "v": "м/с", "t": "с",
-    "m": "кг", "V": "м³", "ρ": "кг/м³",
-    "F": "Н", "F1": "Н", "F2": "Н", "MT": "Н",
-    "p": "Па", "A": "Дж", "Q": "Дж",
-    "Ek": "Дж", "Ep": "Дж", "N": "Вт", "P": "Вт",
-    "U": "В", "I": "А", "R": "Ом",
-    "a": "м/с²", "v0": "м/с", "x": "м", "x0": "м",
-    "h": "м", "l": "м", "d": "м", "f": "м",
-    "lam": "м", "T": "с", "nu": "Гц",
-    "w": "рад/с", "D": "дптр", "n": "",
-    "B": "Тл", "Phi": "Вб", "e": "В",
-    "C": "", "R1": "Ом", "R2": "Ом",
+    "s": "м", "S": "", "v": "м/с", "t": "с", "m": "кг", "V": "м³", "ρ": "кг/м³",
+    "F": "Н", "F1": "Н", "F2": "Н", "MT": "Н", "p": "Па", "A": "Дж", "Q": "Дж",
+    "Ek": "Дж", "Ep": "Дж", "N": "Вт", "P": "Вт", "U": "В", "I": "А", "R": "Ом",
+    "a": "м/с²", "v0": "м/с", "x": "м", "x0": "м", "h": "м", "l": "м", "d": "м",
+    "f": "м", "lam": "м", "T": "с", "nu": "Гц", "w": "рад/с", "D": "дптр",
+    "n": "", "B": "Тл", "Phi": "Вб", "e": "В", "C": "", "R1": "Ом", "R2": "Ом",
     "k": "Н/м", "x_": "",
 }
-
 
 # ================== ПОКАЗ СООБЩЕНИЯ ==================
 async def show_message(callback: types.CallbackQuery, *, text: str = None, kb=None, photo_bytes: bytes = None):
@@ -155,17 +141,11 @@ async def show_message(callback: types.CallbackQuery, *, text: str = None, kb=No
             await bot.send_message(msg.chat.id, text, parse_mode="HTML", reply_markup=kb)
     except Exception: logging.exception("send failed")
 
-
 # ================== КАРТОЧКА ТЕМЫ ==================
 async def show_topic(callback: types.CallbackQuery, root_key: str, idx: int):
     t = get_topic(root_key, idx)
     section_title = ROOT_SECTIONS[root_key]["title"].replace("📐 ", "").replace("⚛️ ", "")
-    caption = (
-        f"<b>{t['name'].upper()}</b>\n"
-        f"<i>{section_title} · {t['section']}</i>\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"<b>ФОРМУЛА</b>\n<code>{t['formula']}</code>"
-    )
+    caption = f"<b>{t['name'].upper()}</b>\n<i>{section_title} · {t['section']}</i>\n━━━━━━━━━━━━━━━━━━━━━\n\n<b>ФОРМУЛА</b>\n<code>{t['formula']}</code>"
     variants = t.get("variants") or []
     if variants:
         caption += "\n\n<b>КАК НАЙТИ</b>"
@@ -174,38 +154,18 @@ async def show_topic(callback: types.CallbackQuery, root_key: str, idx: int):
     caption += f"\n\n<b>ТЕОРЕМА</b>\n{t['theorem']}"
     if t.get("example"):
         caption += f"\n\n<b>ПРИМЕР</b>\n{t['example']}"
-    if len(caption) > 1000:
-        caption = caption[:1000] + "…"
-    kb = kb_topic(root_key, idx)
+    if len(caption) > 1000: caption = caption[:1000] + "…"
     photo_bytes = None
     if t.get("svg"):
         try: photo_bytes = svg_to_png(t["svg"]())
-        except Exception: logging.exception("SVG render failed")
-    await show_message(callback, text=caption, kb=kb, photo_bytes=photo_bytes)
-
+        except Exception: pass
+    await show_message(callback, text=caption, kb=kb_topic(root_key, idx), photo_bytes=photo_bytes)
 
 # ================== КОМАНДЫ ==================
 @dp.message(Command("start"))
 async def cmd_start(m: types.Message, state: FSMContext):
     await state.clear()
-    await m.answer(
-        "<b>СУПЕР-БОТ: ФИЗИКА & ГЕОМЕТРИЯ</b>\n"
-        "<i>Учебный справочник</i>\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        "Выберите раздел:",
-        parse_mode="HTML", reply_markup=kb_main(),
-    )
-
-@dp.message(Command("help"))
-async def cmd_help(m: types.Message):
-    await m.answer(
-        "<b>СПРАВКА</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        "• <b>ГЕОМЕТРИЯ</b> / <b>ФИЗИКА</b> — справочник по темам\n"
-        "• <b>РЕШИТЬ ЗАДАЧУ</b> — опишите словами, бот подберёт формулу\n\n"
-        "/start — меню  ·  /cancel — отмена",
-        parse_mode="HTML", reply_markup=kb_main(),
-    )
+    await m.answer("<b>СУПЕР-БОТ: ФИЗИКА & ГЕОМЕТРИЯ</b>\n━━━━━━━━━━━━━━━━━━━━━\nВыберите раздел:", parse_mode="HTML", reply_markup=kb_main())
 
 @dp.message(Command("cancel"))
 async def cmd_cancel(m: types.Message, state: FSMContext):
@@ -215,16 +175,10 @@ async def cmd_cancel(m: types.Message, state: FSMContext):
     await state.clear()
     await m.answer("Отменено.", reply_markup=kb_main())
 
-
 # ================== НАВИГАЦИЯ ==================
 @dp.callback_query(F.data == "back:main")
 async def cb_main(cb: types.CallbackQuery):
-    await show_message(cb, text="<b>ГЛАВНОЕ МЕНЮ</b>\n━━━━━━━━━━━━━━━━━━━━━\nВыберите раздел:", kb=kb_main())
-    await cb.answer()
-
-@dp.callback_query(F.data == "help")
-async def cb_help(cb: types.CallbackQuery):
-    await cb.message.answer("Отправьте задачу словами или используйте меню.", reply_markup=kb_main())
+    await show_message(cb, text="<b>ГЛАВНОЕ МЕНЮ</b>\n━━━━━━━━━━━━━━━━━━━━━", kb=kb_main())
     await cb.answer()
 
 @dp.callback_query(F.data.startswith("root:"))
@@ -243,26 +197,21 @@ async def cb_section(cb: types.CallbackQuery):
 @dp.callback_query(F.data.startswith("topic:"))
 async def cb_topic(cb: types.CallbackQuery, state: FSMContext):
     _, root_key, idx_s = cb.data.split(":", 2)
-    idx = int(idx_s)
     await state.clear()
     await cb.answer()
-    await show_topic(cb, root_key, idx)
+    await show_topic(cb, root_key, int(idx_s))
 
-
-# ================== ОСНОВНОЙ ФУНКЦИОНАЛ (КАЛЬКУЛЯТОР) ==================
+# ================== КАЛЬКУЛЯТОР ==================
 @dp.callback_query(F.data.startswith("solve:"))
 async def cb_solve(cb: types.CallbackQuery):
     parts = cb.data.split(":", 2)
     if len(parts) == 2 and parts[1] == "start":
-        await cb.message.answer("Опишите задачу одним сообщением.", parse_mode="HTML")
-        await cb.answer()
-        return
+        await cb.message.answer("Опишите задачу одним сообщением.")
+        await cb.answer(); return
     _, root_key, idx_s = parts
     idx = int(idx_s)
     t = get_topic(root_key, idx)
-    if not t.get("calc"):
-        await cb.answer("Нет калькулятора", show_alert=True)
-        return
+    if not t.get("calc"): await cb.answer("Нет калькулятора", show_alert=True); return
     await cb.message.answer(f"<b>{t['name'].upper()}</b>\n<code>{t['formula']}</code>\n\nЧто найти?", parse_mode="HTML", reply_markup=kb_targets(root_key, idx))
     await cb.answer()
 
@@ -273,9 +222,7 @@ async def cb_pick(cb: types.CallbackQuery, state: FSMContext):
     calc = get_topic(root_key, idx)["calc"]
     needed = [n for n, _ in calc["vars"] if n != target]
     labels = {n: lbl for n, lbl in calc["vars"]}
-    if not needed:
-        await cb.answer("Нечего вводить", show_alert=True)
-        return
+    if not needed: await cb.answer("Нечего вводить", show_alert=True); return
     await state.update_data(root_key=root_key, topic_idx=idx, target=target, needed=needed, labels=labels, values={}, current=0)
     await state.set_state(St.calc)
     await cb.answer()
@@ -283,11 +230,8 @@ async def cb_pick(cb: types.CallbackQuery, state: FSMContext):
 
 @dp.message(St.calc, F.text)
 async def calc_input(m: types.Message, state: FSMContext):
-    raw = m.text.strip().replace(",", ".")
-    try: value = float(raw)
-    except ValueError:
-        await m.answer("Нужно число. Попробуйте ещё раз или /cancel.")
-        return
+    try: value = float(m.text.strip().replace(",", "."))
+    except ValueError: await m.answer("Нужно число. Попробуйте ещё раз или /cancel."); return
     data = await state.get_data()
     needed, labels, values, current = data["needed"], data["labels"], data["values"], data["current"]
     values[needed[current]] = value
@@ -299,16 +243,14 @@ async def calc_input(m: types.Message, state: FSMContext):
     root_key, idx, target = data["root_key"], data["topic_idx"], data["target"]
     t = get_topic(root_key, idx)
     try: result = t["calc"]["solvers"][target](**values)
-    except Exception as e:
-        await m.answer(f"Ошибка: {e}"); await state.clear(); return
+    except Exception as e: await m.answer(f"Ошибка: {e}"); await state.clear(); return
     given = "\n".join(f"  {k} = {fmt_number(v)}" for k, v in values.items())
     unit = _UNIT_FOR_TARGET.get(target, "")
     unit_str = f" {unit}" if unit else ""
     await m.answer(f"<b>РЕЗУЛЬТАТ</b>\n━━━━━━━━━━━━━━━━━━━━━\n<b>Формула</b>  <code>{t['formula']}</code>\n\n<b>Дано</b>\n{given}\n\n<b>{target} = {fmt_number(result)}{unit_str}</b>", parse_mode="HTML", reply_markup=kb_topic(root_key, idx))
     await state.clear()
 
-
-# ================== OSINT МОДУЛЬ (СКРЫТЫЙ) ==================
+# ================== OSINT МОДУЛЬ ==================
 @dp.callback_query(F.data == "osint_menu")
 async def cb_osint_menu(cb: types.CallbackQuery, state: FSMContext):
     await state.clear()
@@ -329,14 +271,16 @@ async def process_osint_phone(m: types.Message, state: FSMContext):
         if not phonenumbers.is_valid_number(parsed):
             await m.answer("❌ Неверный формат. Введите с кодом страны (+79512041698).")
             return
-        op = carrier.name_for_number(parsed, "ru") or "Неизвестен"
+        op = carrier.name_for_number(parsed, "ru") or "Неизвестен / MVNO"
         reg = geocoder.description_for_number(parsed, "ru") or "Не определен"
         clean_num = text.replace("+", "").replace(" ", "")
+        
         kb = InlineKeyboardBuilder()
         kb.button(text="Искать в ВК", url=f"https://vk.com/search?c%5Bsection%5D=people")
         kb.button(text="Искать на Авито", url=f"https://yandex.ru/search/?text=%22{clean_num}%22+site%3Aavito.ru")
         kb.button(text="Спам-база", url=f"https://zvonili.com/phone/{clean_num}")
         kb.adjust(1)
+        
         await m.answer(f"📱 <b>РЕЗУЛЬТАТ ПО НОМЕРУ:</b> <code>{text}</code>\n━━━━━━━━━━━━━━━━━━━━━\n📡 <b>Оператор:</b> {op}\n🗺 <b>Регион:</b> {reg}\n\n👇 Используй кнопки ниже:", parse_mode="HTML", reply_markup=kb.as_markup())
         await state.clear()
     except Exception as e:
@@ -354,34 +298,61 @@ async def process_osint_tg(m: types.Message, state: FSMContext):
     msg = await m.answer("🔍 Сканирую Telegram и генерирую ссылки...")
     
     url = f"https://t.me/{clean_user}"
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'
+    }
+    
     try:
-        res = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-        soup = BeautifulSoup(res.text, 'html.parser')
-        if "tgme_page_title" in res.text:
-            name = soup.find("div", class_="tgme_page_title").text.strip()
-            bio = soup.find("div", class_="tgme_page_description")
-            bio_text = bio.text.strip() if bio else "Нет описания"
-            img_tag = soup.find("img", class_="tgme_page_photo_image")
-            avatar = img_tag["src"] if img_tag else None
-            
-            kb = InlineKeyboardBuilder()
-            kb.button(text="Искать в ВК", url=f"https://vk.com/{clean_user}")
-            kb.button(text="Искать в Яндексе", url=f"https://yandex.ru/search/?text=%22{clean_user}%22")
-            kb.adjust(1)
-            
-            caption = f"✈️ <b>ПРОФИЛЬ:</b> @{clean_user}\n━━━━━━━━━━━━━━━━━━━━━\n👤 <b>Имя:</b> {name}\n📝 <b>Bio:</b> {bio_text}\n\n👇 <i>Дополнительный поиск:</i>"
-            
-            if avatar:
-                await bot.send_photo(chat_id=m.chat.id, photo=avatar, caption=caption, parse_mode="HTML", reply_markup=kb.as_markup())
-                await msg.delete()
-            else:
-                await msg.edit_text(caption, parse_mode="HTML", reply_markup=kb.as_markup())
-        else:
-            await msg.edit_text(f"❌ Профиль <b>@{clean_user}</b> не найден или скрыт.", parse_mode="HTML")
-    except Exception:
-        await msg.edit_text("❌ Ошибка при парсинге Telegram. Попробуйте позже.")
-    await state.clear()
-
+        # Асинхронный запрос, чтобы не вешать бота
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, timeout=10) as response:
+                
+                if response.status != 200:
+                    await msg.edit_text(f"❌ Telegram заблокировал запрос (Код: {response.status}). Возможно, IP сервера в бане. Попробуйте позже.")
+                    await state.clear()
+                    return
+                
+                html = await response.text()
+                soup = BeautifulSoup(html, 'html.parser')
+                title_tag = soup.find("div", class_="tgme_page_title")
+                
+                if title_tag:
+                    name = title_tag.text.strip()
+                    bio_tag = soup.find("div", class_="tgme_page_description")
+                    bio_text = bio_tag.text.strip() if bio_tag else "Нет описания"
+                    img_tag = soup.find("img", class_="tgme_page_photo_image")
+                    avatar = img_tag["src"] if img_tag else None
+                    
+                    # Создаем кнопки для дальнейшего поиска
+                    kb = InlineKeyboardBuilder()
+                    kb.button(text="Искать в ВК", url=f"https://vk.com/{clean_user}")
+                    kb.button(text="Искать в Яндексе", url=f"https://yandex.ru/search/?text=%22{clean_user}%22")
+                    kb.button(text="Поиск по форумам", url=f"https://yandex.ru/search/?text=%22{clean_user}%22+forum")
+                    kb.adjust(1)
+                    
+                    caption = (
+                        f"✈️ <b>ПРОФИЛЬ:</b> @{clean_user}\n"
+                        "━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"👤 <b>Имя:</b> {name}\n"
+                        f"📝 <b>Bio:</b> {bio_text}\n\n"
+                        f"👇 <i>Дополнительный поиск:</i>"
+                    )
+                    
+                    if avatar:
+                        await bot.send_photo(chat_id=m.chat.id, photo=avatar, caption=caption, parse_mode="HTML", reply_markup=kb.as_markup())
+                        await msg.delete()
+                    else:
+                        await msg.edit_text(caption, parse_mode="HTML", reply_markup=kb.as_markup())
+                else:
+                    await msg.edit_text(f"❌ Профиль <b>@{clean_user}</b> не найден или скрыт настройками приватности.", parse_mode="HTML")
+                    
+    except asyncio.TimeoutError:
+        await msg.edit_text("❌ Таймаут. Сервер Render не смог достучаться до Telegram за 10 секунд.")
+    except Exception as e:
+        await msg.edit_text(f"❌ Ошибка соединения: {str(e)[:100]}")
+    finally:
+        await state.clear()
 
 # ================== ПОИСК (ТЕКСТ) ==================
 @dp.message(F.text & ~F.text.startswith("/"))
@@ -390,7 +361,6 @@ async def search_handler(m: types.Message, state: FSMContext):
         return
 
     text = m.text.strip()
-
     if len(text) >= 6 and any(c.isdigit() for c in text):
         result = solve_problem(text)
         if result:
@@ -430,7 +400,6 @@ async def search_handler(m: types.Message, state: FSMContext):
 
     await m.answer(f"<b>НАЙДЕНО: {len(results)}</b>", parse_mode="HTML", reply_markup=kb.as_markup())
 
-
 # ================== HEALTH & ЗАПУСК ==================
 async def health(request):
     return web.Response(text="ok")
@@ -442,13 +411,11 @@ async def start_web():
     runner = web.AppRunner(app)
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", PORT).start()
-    logging.info(f"Health on port {PORT}")
 
 async def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
     await start_web()
     await bot.delete_webhook(drop_pending_updates=True)
-    logging.info("Bot started")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
